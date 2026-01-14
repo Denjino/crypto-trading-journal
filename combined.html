@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trading Journal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --bg-card: #16161f;
+            --bg-hover: #1e1e2a;
+            --border-color: #2a2a3a;
+            --border-subtle: #1f1f2a;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --accent-green: #00d4aa;
+            --accent-green-dim: #00d4aa20;
+            --accent-red: #ff4757;
+            --accent-red-dim: #ff475720;
+            --accent-blue: #5c7cfa;
+            --accent-blue-dim: #5c7cfa20;
+            --accent-orange: #ffa502;
+            --accent-orange-dim: #ffa50220;
+            --accent-purple: #a855f7;
+            --accent-purple-dim: #a855f720;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        #root { min-height: 100vh; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+        input, select, textarea { font-family: inherit; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        .animate-pulse { animation: pulse 2s ease-in-out infinite; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+</body>
+</html>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useMemo, createContext, useContext, useRef } = React;
+
+// ============================================
+// CONSTANTS & CONFIG
+// ============================================
+const HYPERLIQUID_API = 'https://api.hyperliquid.xyz/info';
+
+const STRATEGY_TAGS = [
+    { id: 'order-block', label: 'Order Block', color: 'var(--accent-purple)' },
+    { id: 'support-resistance', label: 'Support/Resistance', color: 'var(--accent-blue)' },
+    { id: 'mean-reversion', label: 'Mean Reversion', color: 'var(--accent-green)' },
+    { id: 'news-event', label: 'News Event', color: 'var(--accent-orange)' },
+    { id: 'breakout', label: 'Breakout', color: 'var(--accent-red)' },
+    { id: 'moving-average', label: 'Moving Average', color: '#00bcd4' },
+];
+
+const CONFIDENCE_LEVELS = [
+    { value: 1, label: 'Very Low', color: 'var(--accent-red)' },
+    { value: 2, label: 'Low', color: 'var(--accent-orange)' },
+    { value: 3, label: 'Neutral', color: 'var(--text-secondary)' },
+    { value: 4, label: 'High', color: 'var(--accent-blue)' },
+    { value: 5, label: 'Very High', color: 'var(--accent-green)' },
+];
+
+const LEVERAGE_OPTIONS = [{ value: 2, label: '2x' }, { value: 5, label: '5x' }];
+
+const TILT_THRESHOLDS = {
+    maxRiskPerTrade: 2,
+    maxTotalOpenRisk: 5,
+    consecutiveLosses: 3,
+    tradingFrequencyWindow: 60,
+    maxTradesInWindow: 5,
+};
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+const formatCurrency = (value, decimals = 2) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return '$0.00';
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: 'USD',
+        minimumFractionDigits: decimals, maximumFractionDigits: decimals,
+    }).format(num);
+};
+
+const formatPercent = (value, decimals = 2) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return '0.00%';
+    return `${num >= 0 ? '+' : ''}${num.toFixed(decimals)}%`;
+};
+
+const formatNumber = (value, decimals = 4) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+};
+
+const generateId = () => `trade_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+const formatDateTime = (date) => new Date(date).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+});
+
+// ============================================
+// LOCAL STORAGE
+// ============================================
+const getInitialState = () => {
+    const saved = localStorage.getItem('cryptoJournalState');
+    if (saved) {
+        try { return JSON.parse(saved); }
+        catch (e) { console.error('Failed to parse saved state:', e); }
+    }
+    return {
+        settings: { accountBalance: 10000, maxRiskPerTrade: 2, maxTotalOpenRisk: 5, consecutiveLossesAlert: 3 },
+        trades: [],
+    };
+};
+
+// ============================================
+// HYPERLIQUID API SERVICE
+// ============================================
+const HyperliquidService = {
+    async fetchMeta() {
+        try {
+            const response = await fetch(HYPERLIQUID_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to fetch meta:', error);
+            return null;
+        }
+    },
+    async fetchAllMids() {
+        try {
+            const response = await fetch(HYPERLIQUID_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'allMids' }),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to fetch mids:', error);
+            return {};
+        }
+    },
+};
+
+// ============================================
+// CUSTOM HOOKS
+// ============================================
+const useMarketData = () => {
+    const [tickers, setTickers] = useState([]);
+    const [prices, setPrices] = useState({});
+    const [loading, setLoading] = useState(true);
+    const intervalRef = useRef(null);
+
+    const fetchData = useCallback(async () => {
+        try {
+            const [metaData, midsData] = await Promise.all([
+                HyperliquidService.fetchMeta(),
+                HyperliquidService.fetchAllMids(),
+            ]);
+            if (metaData && metaData[0]?.universe) {
+                const tickerList = metaData[0].universe
+                    .filter(asset => !asset.isDelisted)
+                    .map((asset, index) => ({
+                        symbol: asset.name,
+                        szDecimals: asset.szDecimals,
+                        maxLeverage: asset.maxLeverage,
+                        index,
+                    }));
+                setTickers(tickerList);
+            }
+            if (midsData) setPrices(midsData);
+        } catch (error) {
+            console.error('Error fetching market data:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+        intervalRef.current = setInterval(fetchData, 5000);
+        return () => clearInterval(intervalRef.current);
+    }, [fetchData]);
+
+    return { tickers, prices, loading, refetch: fetchData };
+};
+
+const useTiltDetection = (trades, settings) => {
+    return useMemo(() => {
+        const warnings = [];
+        const openTrades = trades.filter(t => t.status === 'open');
+        const closedTrades = trades.filter(t => t.status === 'closed');
+
+        const totalOpenRisk = openTrades.reduce((sum, t) => sum + (t.riskPercent || 0), 0);
+        if (totalOpenRisk > settings.maxTotalOpenRisk) {
+            warnings.push({
+                type: 'high-exposure', severity: 'critical',
+                message: `Total open risk (${totalOpenRisk.toFixed(1)}%) exceeds maximum (${settings.maxTotalOpenRisk}%)`,
+                suggestion: 'Consider closing some positions to reduce exposure',
+            });
+        }
+
+        const recentClosed = closedTrades.slice(-10);
+        let consecutiveLosses = 0;
+        for (let i = recentClosed.length - 1; i >= 0; i--) {
+            if (recentClosed[i].pnl < 0) consecutiveLosses++;
+            else break;
+        }
+        if (consecutiveLosses >= settings.consecutiveLossesAlert) {
+            warnings.push({
+                type: 'losing-streak', severity: 'warning',
+                message: `${consecutiveLosses} consecutive losing trades detected`,
+                suggestion: 'Take a break, review your strategy, and avoid revenge trading',
+            });
+        }
+
+        if (closedTrades.length >= 3) {
+            const lastThree = closedTrades.slice(-3);
+            const allLosses = lastThree.every(t => t.pnl < 0);
+            const increasingSizes = lastThree.every((t, i) => i === 0 || t.positionSize > lastThree[i-1].positionSize);
+            if (allLosses && increasingSizes) {
+                warnings.push({
+                    type: 'revenge-trading', severity: 'critical',
+                    message: 'Revenge trading pattern detected: increasing sizes after losses',
+                    suggestion: 'Stop trading immediately. Take at least 1 hour break.',
+                });
+            }
+        }
+
+        const now = Date.now();
+        const windowMs = TILT_THRESHOLDS.tradingFrequencyWindow * 60 * 1000;
+        const recentTrades = trades.filter(t => new Date(t.entryTime).getTime() > now - windowMs);
+        if (recentTrades.length >= TILT_THRESHOLDS.maxTradesInWindow) {
+            warnings.push({
+                type: 'overtrading', severity: 'warning',
+                message: `${recentTrades.length} trades in the last ${TILT_THRESHOLDS.tradingFrequencyWindow} minutes`,
+                suggestion: 'Slow down. Quality over quantity.',
+            });
+        }
+
+        const lowConfHighRisk = openTrades.filter(t => t.confidence <= 2 && t.riskPercent > 1);
+        if (lowConfHighRisk.length > 0) {
+            warnings.push({
+                type: 'confidence-risk-mismatch', severity: 'warning',
+                message: `${lowConfHighRisk.length} trade(s) with low confidence but high risk`,
+                suggestion: 'Reduce position size on low confidence trades',
+            });
+        }
+
+        return warnings;
+    }, [trades, settings]);
+};
+
+// ============================================
+// ICONS
+// ============================================
+const Icons = {
+    Dashboard: () => React.createElement('svg', {width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('rect', {x:3,y:3,width:7,height:7,rx:1}), React.createElement('rect', {x:14,y:3,width:7,height:7,rx:1}), React.createElement('rect', {x:3,y:14,width:7,height:7,rx:1}), React.createElement('rect', {x:14,y:14,width:7,height:7,rx:1})),
+    NewTrade: () => React.createElement('svg', {width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('circle', {cx:12,cy:12,r:10}), React.createElement('line', {x1:12,y1:8,x2:12,y2:16}), React.createElement('line', {x1:8,y1:12,x2:16,y2:12})),
+    Active: () => React.createElement('svg', {width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('polyline', {points:"22,12 18,12 15,21 9,3 6,12 2,12"})),
+    Closed: () => React.createElement('svg', {width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('path', {d:"M22 11.08V12a10 10 0 1 1-5.93-9.14"}), React.createElement('polyline', {points:"22 4 12 14.01 9 11.01"})),
+    Settings: () => React.createElement('svg', {width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('circle', {cx:12,cy:12,r:3}), React.createElement('path', {d:"M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"})),
+    TrendUp: () => React.createElement('svg', {width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('polyline', {points:"23 6 13.5 15.5 8.5 10.5 1 18"}), React.createElement('polyline', {points:"17 6 23 6 23 12"})),
+    TrendDown: () => React.createElement('svg', {width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('polyline', {points:"23 18 13.5 8.5 8.5 13.5 1 6"}), React.createElement('polyline', {points:"17 18 23 18 23 12"})),
+    Warning: () => React.createElement('svg', {width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('path', {d:"M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"}), React.createElement('line', {x1:12,y1:9,x2:12,y2:13}), React.createElement('line', {x1:12,y1:17,x2:12.01,y2:17})),
+    Close: () => React.createElement('svg', {width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('line', {x1:18,y1:6,x2:6,y2:18}), React.createElement('line', {x1:6,y1:6,x2:18,y2:18})),
+    Edit: () => React.createElement('svg', {width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('path', {d:"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"}), React.createElement('path', {d:"M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"})),
+    Upload: () => React.createElement('svg', {width:24,height:24,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('path', {d:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}), React.createElement('polyline', {points:"17 8 12 3 7 8"}), React.createElement('line', {x1:12,y1:3,x2:12,y2:15})),
+    ChevronRight: () => React.createElement('svg', {width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('polyline', {points:"9 18 15 12 9 6"})),
+    ChevronLeft: () => React.createElement('svg', {width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2}, React.createElement('polyline', {points:"15 18 9 12 15 6"})),
+};
+
+// ============================================
+// UI COMPONENTS
+// ============================================
+
+// Sidebar Navigation
+const Sidebar = ({ currentScreen, setCurrentScreen }) => {
+    const navItems = [
+        { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard },
+        { id: 'new-trade', label: 'New Trade', icon: Icons.NewTrade },
+        { id: 'active', label: 'Active Trades', icon: Icons.Active },
+        { id: 'closed', label: 'Closed Trades', icon: Icons.Closed },
+        { id: 'settings', label: 'Settings', icon: Icons.Settings },
+    ];
+
+    return React.createElement('aside', {
+        style: {
+            width: '220px', minHeight: '100vh', background: 'var(--bg-secondary)',
+            borderRight: '1px solid var(--border-subtle)', padding: '20px 12px',
+            position: 'fixed', left: 0, top: 0, display: 'flex', flexDirection: 'column',
+        }
+    },
+        React.createElement('div', {
+            style: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '32px', padding: '0 8px' }
+        },
+            React.createElement('div', {
+                style: {
+                    width: '32px', height: '32px',
+                    background: 'linear-gradient(135deg, var(--accent-green), var(--accent-blue))',
+                    borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: "'JetBrains Mono', monospace", fontWeight: '700', fontSize: '12px',
+                }
+            }, 'CJ'),
+            React.createElement('div', null,
+                React.createElement('div', { style: { fontWeight: '600', fontSize: '13px' } }, 'Trading Journal'),
+                React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)' } }, 'Hyperliquid')
+            )
+        ),
+        React.createElement('nav', { style: { flex: 1 } },
+            navItems.map(item => {
+                const Icon = item.icon;
+                const isActive = currentScreen === item.id;
+                return React.createElement('button', {
+                    key: item.id,
+                    onClick: () => setCurrentScreen(item.id),
+                    style: {
+                        width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '10px 14px', marginBottom: '4px',
+                        background: isActive ? 'var(--bg-tertiary)' : 'transparent',
+                        border: 'none', borderRadius: '8px',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        cursor: 'pointer', transition: 'all 0.15s ease',
+                        fontSize: '13px', fontWeight: isActive ? '500' : '400',
+                    }
+                }, React.createElement(Icon), item.label);
+            })
+        )
+    );
+};
+
+// Stat Card
+const StatCard = ({ label, value, subValue, trend, trendValue, color }) => (
+    React.createElement('div', {
+        style: {
+            background: 'var(--bg-card)', borderRadius: '12px', padding: '16px 20px',
+            border: '1px solid var(--border-subtle)',
+        }
+    },
+        React.createElement('div', {
+            style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }
+        },
+            React.createElement('span', {
+                style: { color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }
+            }, label)
+        ),
+        React.createElement('div', {
+            style: {
+                fontSize: '22px', fontWeight: '600', fontFamily: "'JetBrains Mono', monospace",
+                color: color || 'var(--text-primary)', marginBottom: '2px',
+            }
+        }, value),
+        subValue && React.createElement('div', { style: { fontSize: '12px', color: 'var(--text-secondary)' } }, subValue),
+        trend !== undefined && React.createElement('div', {
+            style: {
+                display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontSize: '12px',
+                color: trend >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+            }
+        }, trend >= 0 ? React.createElement(Icons.TrendUp) : React.createElement(Icons.TrendDown), formatPercent(trendValue || trend))
+    )
+);
+
+// Tilt Warning Banner
+const TiltWarningBanner = ({ warnings }) => {
+    const [dismissed, setDismissed] = useState({});
+    const activeWarnings = warnings.filter(w => !dismissed[w.type]);
+    if (activeWarnings.length === 0) return null;
+
+    const severityColors = {
+        critical: { bg: 'var(--accent-red-dim)', border: 'var(--accent-red)', text: 'var(--accent-red)' },
+        warning: { bg: 'var(--accent-orange-dim)', border: 'var(--accent-orange)', text: 'var(--accent-orange)' },
+    };
+
+    return React.createElement('div', { style: { marginBottom: '20px' } },
+        activeWarnings.map((warning, idx) => {
+            const colors = severityColors[warning.severity];
+            return React.createElement('div', {
+                key: warning.type,
+                className: 'animate-fade-in',
+                style: {
+                    background: colors.bg, border: `1px solid ${colors.border}`,
+                    borderRadius: '10px', padding: '14px 16px',
+                    marginBottom: idx < activeWarnings.length - 1 ? '10px' : 0,
+                    display: 'flex', alignItems: 'flex-start', gap: '12px',
+                }
+            },
+                React.createElement('div', { style: { color: colors.text, marginTop: '2px' } }, React.createElement(Icons.Warning)),
+                React.createElement('div', { style: { flex: 1 } },
+                    React.createElement('div', {
+                        style: { fontWeight: '600', marginBottom: '4px', color: colors.text, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.5px' }
+                    }, warning.type.replace(/-/g, ' ')),
+                    React.createElement('div', { style: { marginBottom: '6px', fontSize: '13px' } }, warning.message),
+                    React.createElement('div', { style: { fontSize: '12px', color: 'var(--text-secondary)' } }, '💡 ' + warning.suggestion)
+                ),
+                React.createElement('button', {
+                    onClick: () => setDismissed(prev => ({ ...prev, [warning.type]: true })),
+                    style: { background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }
+                }, React.createElement(Icons.Close))
+            );
+        })
+    );
+};
+
+// Trade Calculator
+const TradeCalculator = ({ formData, settings, openTrades }) => {
+    const calculations = useMemo(() => {
+        const { entry, stopLoss, takeProfit, positionSize, leverage, direction } = formData;
+        const accountBalance = settings.accountBalance;
+        
+        const entryPrice = parseFloat(entry) || 0;
+        const sl = parseFloat(stopLoss) || 0;
+        const tp = parseFloat(takeProfit) || 0;
+        const size = parseFloat(positionSize) || 0;
+        
+        if (!entryPrice || !sl || !size) return null;
+
+        const positionValue = size * entryPrice;
+        const positionPercent = (positionValue / accountBalance) * 100;
+        const riskPerUnit = direction === 'long' ? entryPrice - sl : sl - entryPrice;
+        const riskDollar = Math.abs(riskPerUnit * size);
+        const riskPercent = (riskDollar / accountBalance) * 100;
+        const rewardPerUnit = tp ? (direction === 'long' ? tp - entryPrice : entryPrice - tp) : 0;
+        const rewardDollar = Math.abs(rewardPerUnit * size);
+        const rewardPercent = (rewardDollar / accountBalance) * 100;
+        const rrRatio = riskDollar > 0 ? rewardDollar / riskDollar : 0;
+        const currentOpenRisk = openTrades.filter(t => t.status === 'open').reduce((sum, t) => sum + (t.riskPercent || 0), 0);
+        const currentOpenRiskDollar = openTrades.filter(t => t.status === 'open').reduce((sum, t) => sum + (t.riskDollar || 0), 0);
+        const totalRiskPercent = currentOpenRisk + riskPercent;
+        const totalRiskDollar = currentOpenRiskDollar + riskDollar;
+
+        return { positionValue, positionPercent, riskDollar, riskPercent, rewardDollar, rewardPercent, rrRatio, currentOpenRisk, currentOpenRiskDollar, totalRiskPercent, totalRiskDollar };
+    }, [formData, settings, openTrades]);
+
+    if (!calculations) {
+        return React.createElement('div', {
+            style: { background: 'var(--bg-tertiary)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-subtle)' }
+        },
+            React.createElement('h3', { style: { fontSize: '13px', fontWeight: '600', marginBottom: '12px', color: 'var(--text-muted)' } }, '📊 Live Calculator'),
+            React.createElement('div', { style: { textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '12px' } }, 'Enter entry, stop loss, and size to see calculations')
+        );
+    }
+
+    const isHighRisk = calculations.riskPercent > settings.maxRiskPerTrade;
+    const isTotalRiskHigh = calculations.totalRiskPercent > settings.maxTotalOpenRisk;
+
+    const CalcRow = ({ label, value, subValue, color, warning }) => (
+        React.createElement('div', {
+            style: {
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '10px 12px', background: warning ? 'var(--accent-red-dim)' : 'var(--bg-card)',
+                borderRadius: '8px', border: warning ? '1px solid var(--accent-red)' : 'none',
+            }
+        },
+            React.createElement('span', { style: { fontSize: '12px', color: warning ? 'var(--accent-red)' : 'var(--text-secondary)' } }, label + (warning ? ' ⚠️' : '')),
+            React.createElement('div', { style: { textAlign: 'right' } },
+                React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '600', fontSize: '13px', color: color || 'var(--text-primary)' } }, value),
+                subValue && React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)' } }, subValue)
+            )
+        )
+    );
+
+    return React.createElement('div', {
+        style: {
+            background: 'var(--bg-tertiary)', borderRadius: '12px', padding: '20px',
+            border: `1px solid ${isHighRisk || isTotalRiskHigh ? 'var(--accent-red)' : 'var(--border-subtle)'}`,
+        }
+    },
+        React.createElement('h3', {
+            style: { fontSize: '13px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }
+        }, '📊 Live Calculator', React.createElement('span', { style: { width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse 1.5s ease-in-out infinite' } })),
+        React.createElement('div', { style: { display: 'grid', gap: '10px' } },
+            React.createElement(CalcRow, { label: 'Position Value', value: formatCurrency(calculations.positionValue), subValue: calculations.positionPercent.toFixed(1) + '% of account' }),
+            React.createElement(CalcRow, { label: 'Trade Risk', value: formatCurrency(calculations.riskDollar), subValue: calculations.riskPercent.toFixed(2) + '%', color: isHighRisk ? 'var(--accent-red)' : 'var(--accent-orange)', warning: isHighRisk }),
+            React.createElement(CalcRow, { label: 'Trade Reward', value: formatCurrency(calculations.rewardDollar), subValue: calculations.rewardPercent.toFixed(2) + '%', color: 'var(--accent-green)' }),
+            React.createElement(CalcRow, { label: 'Risk:Reward', value: '1:' + calculations.rrRatio.toFixed(2), color: calculations.rrRatio >= 2 ? 'var(--accent-green)' : calculations.rrRatio >= 1 ? 'var(--accent-orange)' : 'var(--accent-red)' }),
+            React.createElement('div', { style: { height: '1px', background: 'var(--border-color)', margin: '6px 0' } }),
+            React.createElement('div', {
+                style: {
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '12px', background: isTotalRiskHigh ? 'var(--accent-red-dim)' : 'var(--accent-blue-dim)',
+                    borderRadius: '8px', border: `1px solid ${isTotalRiskHigh ? 'var(--accent-red)' : 'var(--accent-blue)'}`,
+                }
+            },
+                React.createElement('div', null,
+                    React.createElement('div', { style: { fontSize: '12px', fontWeight: '600', color: isTotalRiskHigh ? 'var(--accent-red)' : 'var(--accent-blue)', marginBottom: '2px' } }, 'Total Open Risk' + (isTotalRiskHigh ? ' ⚠️' : '')),
+                    React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)' } }, 'Current: ' + calculations.currentOpenRisk.toFixed(1) + '% + This: ' + calculations.riskPercent.toFixed(1) + '%')
+                ),
+                React.createElement('div', { style: { textAlign: 'right' } },
+                    React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '700', fontSize: '18px', color: isTotalRiskHigh ? 'var(--accent-red)' : 'var(--accent-blue)' } }, calculations.totalRiskPercent.toFixed(1) + '%'),
+                    React.createElement('div', { style: { fontSize: '11px', color: 'var(--text-secondary)', fontFamily: "'JetBrains Mono', monospace" } }, formatCurrency(calculations.totalRiskDollar))
+                )
+            )
+        )
+    );
+};
+
+// ============================================
+// SCREEN COMPONENTS
+// ============================================
+
+// Dashboard Screen
+const DashboardScreen = ({ trades, settings, prices, tiltWarnings }) => {
+    const openTrades = trades.filter(t => t.status === 'open');
+    const closedTrades = trades.filter(t => t.status === 'closed');
+    
+    const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    const winningTrades = closedTrades.filter(t => t.pnl > 0);
+    const winRate = closedTrades.length > 0 ? (winningTrades.length / closedTrades.length * 100) : 0;
+    const totalOpenRisk = openTrades.reduce((sum, t) => sum + (t.riskPercent || 0), 0);
+    const totalOpenRiskDollar = openTrades.reduce((sum, t) => sum + (t.riskDollar || 0), 0);
+
+    const openPnl = openTrades.reduce((sum, trade) => {
+        const currentPrice = parseFloat(prices[trade.symbol]) || trade.entry;
+        const priceDiff = trade.direction === 'long' ? currentPrice - trade.entry : trade.entry - currentPrice;
+        return sum + (priceDiff * trade.positionSize);
+    }, 0);
+
+    const accountValue = settings.accountBalance + totalPnl + openPnl;
+    const recentTrades = [...closedTrades].sort((a, b) => new Date(b.exitTime || b.entryTime) - new Date(a.exitTime || a.entryTime)).slice(0, 5);
+    
+    const today = new Date().toDateString();
+    const todaysTrades = closedTrades.filter(t => new Date(t.exitTime).toDateString() === today);
+    const todayPnl = todaysTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+
+    return React.createElement('div', { className: 'animate-fade-in' },
+        React.createElement(TiltWarningBanner, { warnings: tiltWarnings }),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' } },
+            React.createElement(StatCard, { label: 'Account Value', value: formatCurrency(accountValue), subValue: 'Base: ' + formatCurrency(settings.accountBalance), trend: accountValue > settings.accountBalance ? 1 : -1, trendValue: ((accountValue - settings.accountBalance) / settings.accountBalance) * 100 }),
+            React.createElement(StatCard, { label: 'Open Risk', value: totalOpenRisk.toFixed(1) + '%', subValue: formatCurrency(totalOpenRiskDollar), color: totalOpenRisk > settings.maxTotalOpenRisk ? 'var(--accent-red)' : 'var(--accent-orange)' }),
+            React.createElement(StatCard, { label: "Today's P&L", value: formatCurrency(todayPnl), color: todayPnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }),
+            React.createElement(StatCard, { label: 'Win Rate', value: winRate.toFixed(1) + '%', subValue: winningTrades.length + 'W / ' + (closedTrades.length - winningTrades.length) + 'L', color: winRate >= 50 ? 'var(--accent-green)' : 'var(--accent-red)' })
+        ),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' } },
+            // Open Positions
+            React.createElement('div', { style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-subtle)' } },
+                React.createElement('h3', { style: { fontSize: '13px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' } },
+                    React.createElement('span', { style: { width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse 2s ease-in-out infinite' } }),
+                    'Open Positions (' + openTrades.length + ')'
+                ),
+                openTrades.length === 0
+                    ? React.createElement('div', { style: { textAlign: 'center', padding: '30px 16px', color: 'var(--text-muted)', fontSize: '13px' } }, 'No open positions')
+                    : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+                        openTrades.map(trade => {
+                            const currentPrice = parseFloat(prices[trade.symbol]) || trade.entry;
+                            const priceDiff = trade.direction === 'long' ? currentPrice - trade.entry : trade.entry - currentPrice;
+                            const pnl = priceDiff * trade.positionSize;
+                            const pnlPercent = (priceDiff / trade.entry) * 100 * trade.leverage;
+                            return React.createElement('div', { key: trade.id, style: { background: 'var(--bg-tertiary)', borderRadius: '10px', padding: '14px' } },
+                                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' } },
+                                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                                        React.createElement('span', { style: { fontWeight: '600', fontFamily: "'JetBrains Mono', monospace", fontSize: '14px' } }, trade.symbol),
+                                        React.createElement('span', { style: { padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '600', background: trade.direction === 'long' ? 'var(--accent-green-dim)' : 'var(--accent-red-dim)', color: trade.direction === 'long' ? 'var(--accent-green)' : 'var(--accent-red)' } }, trade.direction.toUpperCase() + ' ' + trade.leverage + 'x')
+                                    ),
+                                    React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '600', fontSize: '14px', color: pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' } }, formatCurrency(pnl) + ' (' + formatPercent(pnlPercent) + ')')
+                                ),
+                                React.createElement('div', { style: { display: 'flex', gap: '12px', fontSize: '11px', color: 'var(--text-secondary)' } },
+                                    React.createElement('span', null, 'Entry: ' + formatCurrency(trade.entry)),
+                                    React.createElement('span', null, 'Current: ' + formatCurrency(currentPrice)),
+                                    React.createElement('span', null, 'Risk: ' + trade.riskPercent.toFixed(1) + '%')
+                                )
+                            );
+                        })
+                    )
+            ),
+            // Recent Trades
+            React.createElement('div', { style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-subtle)' } },
+                React.createElement('h3', { style: { fontSize: '13px', fontWeight: '600', marginBottom: '16px' } }, 'Recent Closed Trades'),
+                recentTrades.length === 0
+                    ? React.createElement('div', { style: { textAlign: 'center', padding: '30px 16px', color: 'var(--text-muted)', fontSize: '13px' } }, 'No closed trades yet')
+                    : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                        recentTrades.map(trade => React.createElement('div', { key: trade.id, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: '6px' } },
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+                                React.createElement('span', { style: { width: '5px', height: '5px', borderRadius: '50%', background: trade.pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' } }),
+                                React.createElement('span', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '500', fontSize: '13px' } }, trade.symbol),
+                                React.createElement('span', { style: { fontSize: '10px', color: trade.direction === 'long' ? 'var(--accent-green)' : 'var(--accent-red)' } }, trade.direction.toUpperCase())
+                            ),
+                            React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '600', fontSize: '13px', color: trade.pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' } }, formatCurrency(trade.pnl))
+                        ))
+                    )
+            )
+        )
+    );
+};
+
+// New Trade Screen
+const NewTradeScreen = ({ onSubmit, tickers, prices, settings, openTrades }) => {
+    const [step, setStep] = useState(1);
+    const [formData, setFormData] = useState({
+        direction: 'long', symbol: '', positionSize: '', entry: '', stopLoss: '', takeProfit: '',
+        leverage: 2, entryTime: new Date().toISOString().slice(0, 16),
+        strategies: [], notes: '', screenshot: null, confidence: 3,
+    });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showDropdown, setShowDropdown] = useState(false);
+
+    const filteredTickers = useMemo(() => {
+        if (!searchQuery) return tickers.slice(0, 20);
+        return tickers.filter(t => t.symbol.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 20);
+    }, [tickers, searchQuery]);
+
+    const handleSymbolSelect = (symbol) => {
+        const price = prices[symbol] || '';
+        setFormData(prev => ({ ...prev, symbol, entry: price }));
+        setSearchQuery(symbol);
+        setShowDropdown(false);
+    };
+
+    const handleInputChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
+
+    const handleStrategyToggle = (strategyId) => {
+        setFormData(prev => ({
+            ...prev,
+            strategies: prev.strategies.includes(strategyId) ? prev.strategies.filter(s => s !== strategyId) : [...prev.strategies, strategyId],
+        }));
+    };
+
+    const handleScreenshotUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => setFormData(prev => ({ ...prev, screenshot: e.target.result }));
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSubmit = () => {
+        const entryPrice = parseFloat(formData.entry);
+        const sl = parseFloat(formData.stopLoss);
+        const size = parseFloat(formData.positionSize);
+        const riskPerUnit = formData.direction === 'long' ? entryPrice - sl : sl - entryPrice;
+        const riskDollar = Math.abs(riskPerUnit * size);
+        const riskPercent = (riskDollar / settings.accountBalance) * 100;
+
+        const trade = {
+            id: generateId(), ...formData,
+            entry: entryPrice, stopLoss: sl, takeProfit: parseFloat(formData.takeProfit) || null,
+            positionSize: size, riskDollar, riskPercent, status: 'open', createdAt: new Date().toISOString(),
+        };
+        onSubmit(trade);
+        setFormData({ direction: 'long', symbol: '', positionSize: '', entry: '', stopLoss: '', takeProfit: '', leverage: 2, entryTime: new Date().toISOString().slice(0, 16), strategies: [], notes: '', screenshot: null, confidence: 3 });
+        setSearchQuery('');
+        setStep(1);
+    };
+
+    const inputStyle = { width: '100%', padding: '12px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '13px', fontFamily: "'JetBrains Mono', monospace", outline: 'none' };
+    const labelStyle = { display: 'block', marginBottom: '6px', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' };
+
+    return React.createElement('div', { className: 'animate-fade-in' },
+        // Step Indicator
+        React.createElement('div', { style: { display: 'flex', gap: '8px', marginBottom: '24px' } },
+            [1, 2].map(s => React.createElement('button', {
+                key: s, onClick: () => setStep(s),
+                style: { padding: '8px 16px', background: step === s ? 'var(--accent-blue)' : 'var(--bg-tertiary)', border: 'none', borderRadius: '6px', color: step === s ? 'white' : 'var(--text-secondary)', fontSize: '12px', fontWeight: '500', cursor: 'pointer' }
+            }, s === 1 ? 'Trade Details' : 'Strategy & Notes'))
+        ),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' } },
+            // Main Form
+            React.createElement('div', { style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border-subtle)' } },
+                step === 1 ? React.createElement(React.Fragment, null,
+                    // Direction
+                    React.createElement('div', { style: { marginBottom: '20px' } },
+                        React.createElement('label', { style: labelStyle }, 'Direction'),
+                        React.createElement('div', { style: { display: 'flex', gap: '10px' } },
+                            ['long', 'short'].map(dir => React.createElement('button', {
+                                key: dir, onClick: () => handleInputChange('direction', dir),
+                                style: { flex: 1, padding: '14px', background: formData.direction === dir ? (dir === 'long' ? 'var(--accent-green-dim)' : 'var(--accent-red-dim)') : 'var(--bg-tertiary)', border: `2px solid ${formData.direction === dir ? (dir === 'long' ? 'var(--accent-green)' : 'var(--accent-red)') : 'var(--border-color)'}`, borderRadius: '10px', color: formData.direction === dir ? (dir === 'long' ? 'var(--accent-green)' : 'var(--accent-red)') : 'var(--text-secondary)', fontSize: '14px', fontWeight: '600', cursor: 'pointer', textTransform: 'uppercase' }
+                            }, dir === 'long' ? '↑ Long' : '↓ Short'))
+                        )
+                    ),
+                    // Symbol
+                    React.createElement('div', { style: { marginBottom: '20px', position: 'relative' } },
+                        React.createElement('label', { style: labelStyle }, 'Symbol'),
+                        React.createElement('input', { type: 'text', value: searchQuery, onChange: (e) => { setSearchQuery(e.target.value); setShowDropdown(true); }, onFocus: () => setShowDropdown(true), placeholder: 'Search ticker...', style: inputStyle }),
+                        showDropdown && filteredTickers.length > 0 && React.createElement('div', { style: { position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto', zIndex: 100 } },
+                            filteredTickers.map(ticker => React.createElement('button', {
+                                key: ticker.symbol, onClick: () => handleSymbolSelect(ticker.symbol),
+                                style: { width: '100%', padding: '10px 14px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontSize: '13px' }
+                            },
+                                React.createElement('span', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '500' } }, ticker.symbol),
+                                React.createElement('span', { style: { color: 'var(--text-muted)', fontSize: '12px' } }, prices[ticker.symbol] ? formatCurrency(prices[ticker.symbol]) : '—')
+                            ))
+                        )
+                    ),
+                    // Position Size & Leverage
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' } },
+                        React.createElement('div', null,
+                            React.createElement('label', { style: labelStyle }, 'Position Size'),
+                            React.createElement('input', { type: 'number', value: formData.positionSize, onChange: (e) => handleInputChange('positionSize', e.target.value), placeholder: '0.00', style: inputStyle, step: 'any' })
+                        ),
+                        React.createElement('div', null,
+                            React.createElement('label', { style: labelStyle }, 'Leverage'),
+                            React.createElement('div', { style: { display: 'flex', gap: '8px' } },
+                                LEVERAGE_OPTIONS.map(opt => React.createElement('button', {
+                                    key: opt.value, onClick: () => handleInputChange('leverage', opt.value),
+                                    style: { flex: 1, padding: '12px', background: formData.leverage === opt.value ? 'var(--accent-blue)' : 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '8px', color: formData.leverage === opt.value ? 'white' : 'var(--text-secondary)', fontWeight: '600', cursor: 'pointer', fontFamily: "'JetBrains Mono', monospace" }
+                                }, opt.label))
+                            )
+                        )
+                    ),
+                    // Entry, SL, TP
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '20px' } },
+                        React.createElement('div', null, React.createElement('label', { style: labelStyle }, 'Entry Price'), React.createElement('input', { type: 'number', value: formData.entry, onChange: (e) => handleInputChange('entry', e.target.value), placeholder: '0.00', style: inputStyle, step: 'any' })),
+                        React.createElement('div', null, React.createElement('label', { style: labelStyle }, 'Stop Loss'), React.createElement('input', { type: 'number', value: formData.stopLoss, onChange: (e) => handleInputChange('stopLoss', e.target.value), placeholder: '0.00', style: { ...inputStyle, borderColor: formData.stopLoss ? 'var(--accent-red)' : 'var(--border-color)' }, step: 'any' })),
+                        React.createElement('div', null, React.createElement('label', { style: labelStyle }, 'Take Profit'), React.createElement('input', { type: 'number', value: formData.takeProfit, onChange: (e) => handleInputChange('takeProfit', e.target.value), placeholder: '0.00', style: { ...inputStyle, borderColor: formData.takeProfit ? 'var(--accent-green)' : 'var(--border-color)' }, step: 'any' }))
+                    ),
+                    // Date/Time
+                    React.createElement('div', { style: { marginBottom: '20px' } },
+                        React.createElement('label', { style: labelStyle }, 'Entry Date & Time'),
+                        React.createElement('input', { type: 'datetime-local', value: formData.entryTime, onChange: (e) => handleInputChange('entryTime', e.target.value), style: inputStyle })
+                    ),
+                    React.createElement('button', { onClick: () => setStep(2), style: { width: '100%', padding: '14px', background: 'var(--accent-blue)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '14px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' } }, 'Continue to Strategy ', React.createElement(Icons.ChevronRight))
+                ) : React.createElement(React.Fragment, null,
+                    // Strategy Tags
+                    React.createElement('div', { style: { marginBottom: '20px' } },
+                        React.createElement('label', { style: labelStyle }, 'Strategy Tags'),
+                        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px' } },
+                            STRATEGY_TAGS.map(tag => React.createElement('button', {
+                                key: tag.id, onClick: () => handleStrategyToggle(tag.id),
+                                style: { padding: '8px 12px', background: formData.strategies.includes(tag.id) ? tag.color + '20' : 'var(--bg-tertiary)', border: `1px solid ${formData.strategies.includes(tag.id) ? tag.color : 'var(--border-color)'}`, borderRadius: '6px', color: formData.strategies.includes(tag.id) ? tag.color : 'var(--text-secondary)', fontSize: '12px', fontWeight: '500', cursor: 'pointer' }
+                            }, tag.label))
+                        )
+                    ),
+                    // Confidence
+                    React.createElement('div', { style: { marginBottom: '20px' } },
+                        React.createElement('label', { style: labelStyle }, 'Confidence Level'),
+                        React.createElement('div', { style: { display: 'flex', gap: '6px' } },
+                            CONFIDENCE_LEVELS.map(level => React.createElement('button', {
+                                key: level.value, onClick: () => handleInputChange('confidence', level.value),
+                                style: { flex: 1, padding: '10px 6px', background: formData.confidence === level.value ? level.color + '20' : 'var(--bg-tertiary)', border: `1px solid ${formData.confidence === level.value ? level.color : 'var(--border-color)'}`, borderRadius: '6px', color: formData.confidence === level.value ? level.color : 'var(--text-muted)', fontSize: '10px', fontWeight: '500', cursor: 'pointer' }
+                            }, level.label))
+                        )
+                    ),
+                    // Notes
+                    React.createElement('div', { style: { marginBottom: '20px' } },
+                        React.createElement('label', { style: labelStyle }, 'Trade Notes'),
+                        React.createElement('textarea', { value: formData.notes, onChange: (e) => handleInputChange('notes', e.target.value), placeholder: "What's your trade thesis?", style: { ...inputStyle, minHeight: '100px', resize: 'vertical', fontFamily: 'inherit' } })
+                    ),
+                    // Screenshot
+                    React.createElement('div', { style: { marginBottom: '24px' } },
+                        React.createElement('label', { style: labelStyle }, 'Chart Screenshot'),
+                        React.createElement('div', { style: { border: `2px dashed ${formData.screenshot ? 'var(--accent-green)' : 'var(--border-color)'}`, borderRadius: '10px', padding: formData.screenshot ? '0' : '30px', textAlign: 'center', cursor: 'pointer', overflow: 'hidden', position: 'relative' } },
+                            React.createElement('input', { type: 'file', accept: 'image/*', onChange: handleScreenshotUpload, style: { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' } }),
+                            formData.screenshot
+                                ? React.createElement('img', { src: formData.screenshot, alt: 'Chart', style: { width: '100%', maxHeight: '150px', objectFit: 'cover' } })
+                                : React.createElement(React.Fragment, null, React.createElement(Icons.Upload), React.createElement('div', { style: { marginTop: '10px', color: 'var(--text-muted)', fontSize: '12px' } }, 'Click or drag to upload'))
+                        )
+                    ),
+                    // Buttons
+                    React.createElement('div', { style: { display: 'flex', gap: '10px' } },
+                        React.createElement('button', { onClick: () => setStep(1), style: { flex: 1, padding: '14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '10px', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: '500', cursor: 'pointer' } }, 'Back'),
+                        React.createElement('button', {
+                            onClick: handleSubmit, disabled: !formData.symbol || !formData.entry || !formData.stopLoss || !formData.positionSize,
+                            style: { flex: 2, padding: '14px', background: formData.direction === 'long' ? 'var(--accent-green)' : 'var(--accent-red)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '14px', fontWeight: '600', cursor: 'pointer', opacity: (!formData.symbol || !formData.entry || !formData.stopLoss || !formData.positionSize) ? 0.5 : 1 }
+                        }, 'Open ' + (formData.direction === 'long' ? 'Long' : 'Short') + ' Position')
+                    )
+                )
+            ),
+            // Calculator
+            React.createElement(TradeCalculator, { formData, settings, openTrades })
+        )
+    );
+};
+
+// Active Trades Screen
+const ActiveTradesScreen = ({ trades, prices, onCloseTrade, settings }) => {
+    const [closingTrade, setClosingTrade] = useState(null);
+    const [exitPrice, setExitPrice] = useState('');
+    const openTrades = trades.filter(t => t.status === 'open');
+    const totalOpenRisk = openTrades.reduce((sum, t) => sum + (t.riskPercent || 0), 0);
+
+    const handleCloseAtMarket = (trade) => {
+        const currentPrice = parseFloat(prices[trade.symbol]);
+        if (currentPrice) handleConfirmClose(trade, currentPrice);
+    };
+
+    const handleConfirmClose = (trade, price) => {
+        const priceDiff = trade.direction === 'long' ? price - trade.entry : trade.entry - price;
+        const pnl = priceDiff * trade.positionSize;
+        onCloseTrade(trade.id, { exitPrice: price, pnl, exitTime: new Date().toISOString(), status: 'closed' });
+        setClosingTrade(null);
+        setExitPrice('');
+    };
+
+    const unrealizedPnl = openTrades.reduce((sum, trade) => {
+        const currentPrice = parseFloat(prices[trade.symbol]) || trade.entry;
+        const priceDiff = trade.direction === 'long' ? currentPrice - trade.entry : trade.entry - currentPrice;
+        return sum + (priceDiff * trade.positionSize);
+    }, 0);
+
+    return React.createElement('div', { className: 'animate-fade-in' },
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' } },
+            React.createElement(StatCard, { label: 'Open Positions', value: openTrades.length }),
+            React.createElement(StatCard, { label: 'Total Open Risk', value: totalOpenRisk.toFixed(1) + '%', color: totalOpenRisk > settings.maxTotalOpenRisk ? 'var(--accent-red)' : 'var(--accent-orange)' }),
+            React.createElement(StatCard, { label: 'Unrealized P&L', value: formatCurrency(unrealizedPnl), color: unrealizedPnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' })
+        ),
+        openTrades.length === 0
+            ? React.createElement('div', { style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '50px', textAlign: 'center', border: '1px solid var(--border-subtle)' } },
+                React.createElement('div', { style: { fontSize: '40px', marginBottom: '12px' } }, '📊'),
+                React.createElement('div', { style: { fontSize: '16px', fontWeight: '500', marginBottom: '6px' } }, 'No Active Positions'),
+                React.createElement('div', { style: { color: 'var(--text-muted)', fontSize: '13px' } }, 'Open a new trade to get started')
+            )
+            : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+                openTrades.map(trade => {
+                    const currentPrice = parseFloat(prices[trade.symbol]) || trade.entry;
+                    const priceDiff = trade.direction === 'long' ? currentPrice - trade.entry : trade.entry - currentPrice;
+                    const pnl = priceDiff * trade.positionSize;
+                    const pnlPercent = (priceDiff / trade.entry) * 100 * trade.leverage;
+
+                    return React.createElement('div', { key: trade.id, style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-subtle)' } },
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' } },
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+                                React.createElement('span', { style: { fontSize: '18px', fontWeight: '700', fontFamily: "'JetBrains Mono', monospace" } }, trade.symbol),
+                                React.createElement('span', { style: { padding: '3px 10px', borderRadius: '5px', fontSize: '11px', fontWeight: '600', background: trade.direction === 'long' ? 'var(--accent-green-dim)' : 'var(--accent-red-dim)', color: trade.direction === 'long' ? 'var(--accent-green)' : 'var(--accent-red)' } }, trade.direction.toUpperCase() + ' ' + trade.leverage + 'x'),
+                                React.createElement('span', { style: { padding: '3px 10px', borderRadius: '5px', fontSize: '11px', background: 'var(--accent-orange-dim)', color: 'var(--accent-orange)' } }, 'Risk: ' + trade.riskPercent.toFixed(1) + '%')
+                            ),
+                            React.createElement('div', { style: { textAlign: 'right' } },
+                                React.createElement('div', { style: { fontSize: '20px', fontWeight: '700', fontFamily: "'JetBrains Mono', monospace", color: pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' } }, formatCurrency(pnl)),
+                                React.createElement('div', { style: { fontSize: '13px', color: pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' } }, formatPercent(pnlPercent))
+                            )
+                        ),
+                        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '16px' } },
+                            React.createElement('div', null, React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' } }, 'Entry'), React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '500', fontSize: '13px' } }, formatCurrency(trade.entry))),
+                            React.createElement('div', null, React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' } }, 'Current'), React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '500', fontSize: '13px' } }, formatCurrency(currentPrice))),
+                            React.createElement('div', null, React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' } }, 'Stop Loss'), React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '500', fontSize: '13px', color: 'var(--accent-red)' } }, formatCurrency(trade.stopLoss))),
+                            React.createElement('div', null, React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' } }, 'Take Profit'), React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '500', fontSize: '13px', color: 'var(--accent-green)' } }, trade.takeProfit ? formatCurrency(trade.takeProfit) : '—')),
+                            React.createElement('div', null, React.createElement('div', { style: { fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' } }, 'Size'), React.createElement('div', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '500', fontSize: '13px' } }, formatNumber(trade.positionSize)))
+                        ),
+                        closingTrade === trade.id
+                            ? React.createElement('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } },
+                                React.createElement('input', { type: 'number', value: exitPrice, onChange: (e) => setExitPrice(e.target.value), placeholder: 'Exit price', style: { flex: 1, padding: '10px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px', fontFamily: "'JetBrains Mono', monospace", outline: 'none' } }),
+                                React.createElement('button', { onClick: () => handleConfirmClose(trade, parseFloat(exitPrice)), disabled: !exitPrice, style: { padding: '10px 16px', background: 'var(--accent-green)', border: 'none', borderRadius: '6px', color: 'white', fontWeight: '600', fontSize: '12px', cursor: 'pointer', opacity: exitPrice ? 1 : 0.5 } }, 'Confirm'),
+                                React.createElement('button', { onClick: () => { setClosingTrade(null); setExitPrice(''); }, style: { padding: '10px 16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)', fontWeight: '500', fontSize: '12px', cursor: 'pointer' } }, 'Cancel')
+                            )
+                            : React.createElement('div', { style: { display: 'flex', gap: '10px' } },
+                                React.createElement('button', { onClick: () => handleCloseAtMarket(trade), style: { flex: 1, padding: '10px', background: 'var(--accent-blue)', border: 'none', borderRadius: '6px', color: 'white', fontWeight: '600', fontSize: '12px', cursor: 'pointer' } }, 'Close at Market (' + formatCurrency(currentPrice) + ')'),
+                                React.createElement('button', { onClick: () => setClosingTrade(trade.id), style: { flex: 1, padding: '10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)', fontWeight: '500', fontSize: '12px', cursor: 'pointer' } }, 'Close at Custom Price')
+                            )
+                    );
+                })
+            )
+    );
+};
+
+// Settings Screen
+const SettingsScreen = ({ settings, onUpdateSettings, trades }) => {
+    const [localSettings, setLocalSettings] = useState(settings);
+    
+    // Calculate realized P&L
+    const closedTrades = trades.filter(t => t.status === 'closed');
+    const realizedPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+
+    const handleChange = (field, value) => {
+        const newSettings = { ...localSettings, [field]: parseFloat(value) || 0 };
+        setLocalSettings(newSettings);
+        onUpdateSettings(newSettings);
+    };
+
+    const inputStyle = { width: '100%', padding: '12px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '14px', fontFamily: "'JetBrains Mono', monospace", outline: 'none' };
+    const labelStyle = { display: 'block', marginBottom: '6px', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' };
+
+    return React.createElement('div', { className: 'animate-fade-in' },
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' } },
+            // Account Settings
+            React.createElement('div', { style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border-subtle)' } },
+                React.createElement('h3', { style: { fontSize: '15px', fontWeight: '600', marginBottom: '20px' } }, '💰 Account Settings'),
+                React.createElement('div', { style: { marginBottom: '20px' } },
+                    React.createElement('label', { style: labelStyle }, 'Base Account Balance'),
+                    React.createElement('input', { type: 'number', value: localSettings.accountBalance, onChange: (e) => handleChange('accountBalance', e.target.value), style: inputStyle })
+                ),
+                React.createElement('div', { style: { background: 'var(--bg-tertiary)', borderRadius: '10px', padding: '16px' } },
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '10px' } },
+                        React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '13px' } }, 'Base Balance'),
+                        React.createElement('span', { style: { fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' } }, formatCurrency(localSettings.accountBalance))
+                    ),
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '10px' } },
+                        React.createElement('span', { style: { color: 'var(--text-secondary)', fontSize: '13px' } }, 'Realized P&L'),
+                        React.createElement('span', { style: { fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', color: realizedPnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' } }, formatCurrency(realizedPnl))
+                    ),
+                    React.createElement('div', { style: { height: '1px', background: 'var(--border-color)', margin: '10px 0' } }),
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                        React.createElement('span', { style: { fontWeight: '600', fontSize: '13px' } }, 'Current Balance'),
+                        React.createElement('span', { style: { fontFamily: "'JetBrains Mono', monospace", fontWeight: '600', fontSize: '14px' } }, formatCurrency(localSettings.accountBalance + realizedPnl))
+                    )
+                )
+            ),
+            // Risk Settings
+            React.createElement('div', { style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border-subtle)' } },
+                React.createElement('h3', { style: { fontSize: '15px', fontWeight: '600', marginBottom: '20px' } }, '⚠️ Risk Management'),
+                React.createElement('div', { style: { marginBottom: '16px' } },
+                    React.createElement('label', { style: labelStyle }, 'Max Risk Per Trade (%)'),
+                    React.createElement('input', { type: 'number', value: localSettings.maxRiskPerTrade, onChange: (e) => handleChange('maxRiskPerTrade', e.target.value), style: inputStyle, step: '0.5', min: '0.5', max: '10' }),
+                    React.createElement('div', { style: { fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' } }, 'Warning shown when a single trade exceeds this risk')
+                ),
+                React.createElement('div', { style: { marginBottom: '16px' } },
+                    React.createElement('label', { style: labelStyle }, 'Max Total Open Risk (%)'),
+                    React.createElement('input', { type: 'number', value: localSettings.maxTotalOpenRisk, onChange: (e) => handleChange('maxTotalOpenRisk', e.target.value), style: inputStyle, step: '0.5', min: '1', max: '20' }),
+                    React.createElement('div', { style: { fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' } }, 'Warning shown when combined open positions exceed this')
+                ),
+                React.createElement('div', null,
+                    React.createElement('label', { style: labelStyle }, 'Consecutive Losses Alert'),
+                    React.createElement('input', { type: 'number', value: localSettings.consecutiveLossesAlert, onChange: (e) => handleChange('consecutiveLossesAlert', e.target.value), style: inputStyle, step: '1', min: '2', max: '10' }),
+                    React.createElement('div', { style: { fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' } }, 'Tilt warning after this many losses in a row')
+                )
+            )
+        ),
+        // Tilt Detection Info
+        React.createElement('div', { style: { background: 'var(--bg-card)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border-subtle)', marginTop: '20px' } },
+            React.createElement('h3', { style: { fontSize: '15px', fontWeight: '600', marginBottom: '16px' } }, '🧠 Tilt Detection'),
+            React.createElement('div', { style: { color: 'var(--text-secondary)', fontSize: '13px', lineHeight: '1.6', marginBottom: '16px' } }, 'The journal monitors your trading behavior and warns you when potentially harmful patterns are detected:'),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' } },
+                [
+                    { icon: '📊', title: 'High Exposure', desc: 'Total open risk exceeds your maximum threshold' },
+                    { icon: '📉', title: 'Losing Streak', desc: 'Multiple consecutive losing trades detected' },
+                    { icon: '😤', title: 'Revenge Trading', desc: 'Increasing position sizes after losses' },
+                    { icon: '⏰', title: 'Overtrading', desc: 'Too many trades in a short time period' },
+                    { icon: '🎯', title: 'Risk Mismatch', desc: 'Low confidence trades with high risk' },
+                    { icon: '🛑', title: 'Ignored Stop Loss', desc: 'Closing trades at worse prices than SL' }
+                ].map(item => React.createElement('div', { key: item.title, style: { background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '14px' } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' } },
+                        React.createElement('span', { style: { fontSize: '16px' } }, item.icon),
+                        React.createElement('span', { style: { fontWeight: '600', fontSize: '13px' } }, item.title)
+                    ),
+                    React.createElement('div', { style: { fontSize: '12px', color: 'var(--text-muted)' } }, item.desc)
+                ))
+            )
+        )
+    );
+};
+
+// ============================================
+// MAIN APP COMPONENT
+// ============================================
+const App = () => {
+    const [currentScreen, setCurrentScreen] = useState('dashboard');
+    const [state, setState] = useState(getInitialState);
+    const { tickers, prices, loading } = useMarketData();
+    const tiltWarnings = useTiltDetection(state.trades, state.settings);
+
+    // Save state to localStorage
+    useEffect(() => {
+        localStorage.setItem('cryptoJournalState', JSON.stringify(state));
+    }, [state]);
+
+    const handleAddTrade = useCallback((trade) => {
+        setState(prev => ({ ...prev, trades: [...prev.trades, trade] }));
+        setCurrentScreen('active');
+    }, []);
+
+    const handleCloseTrade = useCallback((tradeId, closeData) => {
+        setState(prev => ({
+            ...prev,
+            trades: prev.trades.map(t => t.id === tradeId ? { ...t, ...closeData } : t)
+        }));
+    }, []);
+
+    const handleEditTrade = useCallback((tradeId, updates) => {
+        setState(prev => ({
+            ...prev,
+            trades: prev.trades.map(t => t.id === tradeId ? { ...t, ...updates } : t)
+        }));
+    }, []);
+
+    const handleUpdateSettings = useCallback((newSettings) => {
+        setState(prev => ({ ...prev, settings: newSettings }));
+    }, []);
+
+    const renderScreen = () => {
+        switch (currentScreen) {
+            case 'dashboard':
+                return React.createElement(DashboardScreen, { trades: state.trades, settings: state.settings, prices, tiltWarnings });
+            case 'new-trade':
+                return React.createElement(NewTradeScreen, { onSubmit: handleAddTrade, tickers, prices, settings: state.settings, openTrades: state.trades });
+            case 'active':
+                return React.createElement(ActiveTradesScreen, { trades: state.trades, prices, onCloseTrade: handleCloseTrade, settings: state.settings });
+            case 'closed':
+                return React.createElement(ClosedTradesScreen, { trades: state.trades, onEditTrade: handleEditTrade });
+            case 'settings':
+                return React.createElement(SettingsScreen, { settings: state.settings, onUpdateSettings: handleUpdateSettings, trades: state.trades });
+            default:
+                return null;
+        }
+    };
+
+    const screenTitles = {
+        'dashboard': 'Dashboard',
+        'new-trade': 'New Trade',
+        'active': 'Active Trades',
+        'closed': 'Closed Trades',
+        'settings': 'Settings'
+    };
+
+    return React.createElement('div', { style: { display: 'flex', minHeight: '100vh' } },
+        React.createElement(Sidebar, { currentScreen, setCurrentScreen }),
+        React.createElement('main', { style: { flex: 1, marginLeft: '220px', padding: '24px 32px', background: 'var(--bg-primary)' } },
+            // Header
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' } },
+                React.createElement('h1', { style: { fontSize: '22px', fontWeight: '600' } }, screenTitles[currentScreen]),
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } },
+                    loading
+                        ? React.createElement('span', { style: { fontSize: '12px', color: 'var(--text-muted)' } }, 'Loading prices...')
+                        : React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--accent-green)' } },
+                            React.createElement('span', { style: { width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse 2s ease-in-out infinite' } }),
+                            'Live'
+                        ),
+                    React.createElement('span', { style: { fontSize: '12px', color: 'var(--text-muted)' } }, new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }))
+                )
+            ),
+            // Content
+            renderScreen()
+        )
+    );
+};
+
+// Render App
+ReactDOM.render(React.createElement(App), document.getElementById('root'));
+</script>
