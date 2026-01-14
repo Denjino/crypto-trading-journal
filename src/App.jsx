@@ -1,6 +1,56 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
-// Constants
+// Constants - Trading Performance Data
+const TRADING_STATS = {
+  // Best and worst days (by avg PnL per exit)
+  dayPerformance: {
+    Friday: { avgPnl: 17.31, winRate: 43.0, profitFactor: 1.48, rating: 'best' },
+    Wednesday: { avgPnl: 5.36, winRate: 43.2, profitFactor: 1.18, rating: 'good' },
+    Monday: { avgPnl: -0.03, winRate: null, profitFactor: null, rating: 'neutral' },
+    Thursday: { avgPnl: -43.06, winRate: 32.4, profitFactor: 0.27, rating: 'danger' },
+    Sunday: { avgPnl: -28.37, winRate: 16.7, profitFactor: 0.35, rating: 'danger' },
+    Tuesday: { avgPnl: -18.48, winRate: 25.0, profitFactor: 0.54, rating: 'danger' },
+    Saturday: { avgPnl: 0, winRate: null, profitFactor: null, rating: 'neutral' },
+  },
+  // Best and worst hours
+  hourPerformance: {
+    15: { avgPnl: 55.19, winRate: 51.9, profitFactor: 3.89, rating: 'best' },
+    2: { avgPnl: 46.13, winRate: 53.7, profitFactor: 2.56, rating: 'best' },
+    11: { avgPnl: 11.80, winRate: null, profitFactor: null, rating: 'good' },
+    3: { avgPnl: -2.91, winRate: null, profitFactor: null, rating: 'caution' },
+    22: { avgPnl: -33.70, winRate: null, profitFactor: 0.40, rating: 'danger' },
+  },
+  // Post-loss behavior
+  postLossBehavior: {
+    afterWin: { avgPnl: 11.22, winRate: 49.7 },
+    afterLoss: { avgPnl: -20.86, winRate: 26.9 },
+  },
+  // Re-entry timing after loss
+  reentryTiming: {
+    under5min: { avgPnl: -36.64, winRate: 18.8 },
+    '5to30min': { avgPnl: -82.84, winRate: 11.1 },
+    '30to120min': { avgPnl: -25.28, winRate: 13.8 },
+    over120min: { avgPnl: -9.25, winRate: 33.0 },
+  },
+  // Losing streak impact
+  losingStreakImpact: {
+    0: { avgPnl: 11.15, winRate: 49.4 },
+    1: { avgPnl: -18.91, winRate: 22.9 },
+    2: { avgPnl: -19.32, winRate: 26.6 },
+    '3+': { avgPnl: -24.53, winRate: 28.0 },
+  },
+  // Daily trade frequency impact
+  dailyFrequencyImpact: {
+    '1-3': { avgDayPnl: -17.58 },
+    '4-6': { avgDayPnl: -20.62 },
+    '7+': { avgDayPnl: -166.42 },
+  },
+};
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DANGER_DAYS = ['Thursday', 'Sunday', 'Tuesday'];
+const DANGER_HOURS = [22];
+
 const STRATEGY_TAGS = [
   { id: 'order-block', label: 'Order Block', color: '#a855f7' },
   { id: 'support-resistance', label: 'Support/Resistance', color: '#5c7cfa' },
@@ -120,21 +170,151 @@ const useMarketData = () => {
 const useTiltDetection = (trades, settings) => useMemo(() => {
   const warnings = [];
   const open = trades.filter(t => t.status === 'open');
-  const closed = trades.filter(t => t.status === 'closed');
+  const closed = trades.filter(t => t.status === 'closed').sort((a, b) =>
+    new Date(a.exitTime || a.createdAt) - new Date(b.exitTime || b.createdAt)
+  );
   const risk = open.reduce((s, t) => s + (t.riskPercent || 0), 0);
-  
-  if (risk > settings.maxTotalOpenRisk) warnings.push({ type: 'high-exposure', severity: 'critical', message: `Total risk ${risk.toFixed(1)}% exceeds ${settings.maxTotalOpenRisk}%`, suggestion: 'Close some positions' });
-  
-  let losses = 0;
-  for (let i = closed.length - 1; i >= 0; i--) { if (closed[i].pnl < 0) losses++; else break; }
-  if (losses >= settings.consecutiveLossesAlert) warnings.push({ type: 'losing-streak', severity: 'warning', message: `${losses} consecutive losses`, suggestion: 'Take a break' });
-  
+  const now = new Date();
+  const currentDay = DAY_NAMES[now.getDay()];
+  const currentHour = now.getHours();
+
+  // High exposure warning
+  if (risk > settings.maxTotalOpenRisk) {
+    warnings.push({
+      type: 'high-exposure',
+      severity: 'critical',
+      message: `Total risk ${risk.toFixed(1)}% exceeds ${settings.maxTotalOpenRisk}%`,
+      suggestion: 'Close some positions before opening new ones',
+      stat: null
+    });
+  }
+
+  // Day of week warning
+  if (settings.enableDayFilter !== false && DANGER_DAYS.includes(currentDay)) {
+    const dayStats = TRADING_STATS.dayPerformance[currentDay];
+    warnings.push({
+      type: 'danger-day',
+      severity: 'warning',
+      message: `${currentDay} is historically a losing day`,
+      suggestion: 'Consider waiting for a better day or trading half-size with A+ setups only',
+      stat: `Avg: ${dayStats.avgPnl.toFixed(2)}/trade, Win rate: ${dayStats.winRate}%, PF: ${dayStats.profitFactor}`
+    });
+  }
+
+  // Hour of day warning
+  if (settings.enableHourFilter !== false && DANGER_HOURS.includes(currentHour)) {
+    const hourStats = TRADING_STATS.hourPerformance[currentHour];
+    warnings.push({
+      type: 'danger-hour',
+      severity: 'warning',
+      message: `${currentHour}:00 hour is a danger zone (fatigue/impaired discipline)`,
+      suggestion: 'Step away from charts - late night trading underperforms',
+      stat: hourStats ? `Avg: ${hourStats.avgPnl.toFixed(2)}/trade, PF: ${hourStats.profitFactor}` : null
+    });
+  }
+
+  // Calculate losing streak
+  let losingStreak = 0;
+  for (let i = closed.length - 1; i >= 0; i--) {
+    if (closed[i].pnl < 0) losingStreak++;
+    else break;
+  }
+
+  // Losing streak warnings (graduated severity)
+  if (losingStreak >= 1 && settings.enableStreakWarning !== false) {
+    const streakKey = losingStreak >= 3 ? '3+' : losingStreak.toString();
+    const streakStats = TRADING_STATS.losingStreakImpact[streakKey];
+
+    if (losingStreak >= settings.consecutiveLossesAlert) {
+      warnings.push({
+        type: 'losing-streak',
+        severity: losingStreak >= 3 ? 'critical' : 'warning',
+        message: `${losingStreak} consecutive loss${losingStreak > 1 ? 'es' : ''} - your edge is negative`,
+        suggestion: losingStreak >= 2 ? 'Stop for the day or switch to tiny size with one A+ setup only' : 'Take a 30+ minute break before next trade',
+        stat: `Expected: ${streakStats.avgPnl.toFixed(2)} avg PnL, ${streakStats.winRate}% win rate on next trade`
+      });
+    }
+  }
+
+  // Post-loss state detection
+  const lastTrade = closed[closed.length - 1];
+  if (lastTrade && lastTrade.pnl < 0 && settings.enablePostLossWarning !== false) {
+    const lastExitTime = new Date(lastTrade.exitTime || lastTrade.createdAt);
+    const minutesSinceLoss = (now - lastExitTime) / (1000 * 60);
+
+    // Rapid re-entry warning (revenge trading window)
+    if (minutesSinceLoss < 120) {
+      let timingKey, severity, message;
+
+      if (minutesSinceLoss < 5) {
+        timingKey = 'under5min';
+        severity = 'critical';
+        message = 'DANGER: Re-entering within 5 min of loss';
+      } else if (minutesSinceLoss < 30) {
+        timingKey = '5to30min';
+        severity = 'critical';
+        message = 'DANGER: This is the worst re-entry window (5-30 min)';
+      } else if (minutesSinceLoss < 120) {
+        timingKey = '30to120min';
+        severity = 'warning';
+        message = `${Math.round(minutesSinceLoss)} min since last loss - still in cooldown`;
+      }
+
+      const timingStats = TRADING_STATS.reentryTiming[timingKey];
+      warnings.push({
+        type: 'rapid-reentry',
+        severity,
+        message,
+        suggestion: 'Wait at least 2 hours after a loss before trading again',
+        stat: `Your stats: ${timingStats.avgPnl.toFixed(2)} avg PnL, ${timingStats.winRate}% win rate`,
+        minutesSinceLoss: Math.round(minutesSinceLoss)
+      });
+    } else {
+      // General post-loss warning (even after 2 hours)
+      warnings.push({
+        type: 'post-loss',
+        severity: 'info',
+        message: 'Last trade was a loss',
+        suggestion: 'Your post-loss trades average -$20.86. Ensure this is an A+ setup.',
+        stat: `Post-loss expected: ${TRADING_STATS.postLossBehavior.afterLoss.avgPnl.toFixed(2)} avg, ${TRADING_STATS.postLossBehavior.afterLoss.winRate}% WR`
+      });
+    }
+  }
+
+  // Overtrading detection (trades today)
+  const today = new Date().toDateString();
+  const tradesToday = closed.filter(t => {
+    const exitDate = new Date(t.exitTime || t.createdAt).toDateString();
+    return exitDate === today;
+  }).length + open.length;
+
+  if (tradesToday >= 4 && settings.enableOvertradingWarning !== false) {
+    const frequencyKey = tradesToday >= 7 ? '7+' : tradesToday >= 4 ? '4-6' : '1-3';
+    const freqStats = TRADING_STATS.dailyFrequencyImpact[frequencyKey];
+
+    warnings.push({
+      type: 'overtrading',
+      severity: tradesToday >= 7 ? 'critical' : 'warning',
+      message: `${tradesToday} trades today - overtrading detected`,
+      suggestion: tradesToday >= 7 ? 'STOP. High-frequency days average -$166/day' : 'Cap at 3 trades/day unless scaling out of planned positions',
+      stat: `Days with ${frequencyKey} trades average: ${freqStats.avgDayPnl.toFixed(2)}/day`
+    });
+  }
+
+  // Revenge trading pattern (increasing size after losses)
   if (closed.length >= 3) {
     const last3 = closed.slice(-3);
-    if (last3.every(t => t.pnl < 0) && last3.every((t, i) => i === 0 || t.positionSize > last3[i-1].positionSize))
-      warnings.push({ type: 'revenge-trading', severity: 'critical', message: 'Increasing size after losses', suggestion: 'Stop immediately' });
+    if (last3.every(t => t.pnl < 0) && last3.every((t, i) => i === 0 || (t.positionSizeUSD || t.positionSize) > (last3[i-1].positionSizeUSD || last3[i-1].positionSize))) {
+      warnings.push({
+        type: 'revenge-sizing',
+        severity: 'critical',
+        message: 'REVENGE PATTERN: Increasing position size after losses',
+        suggestion: 'This is how big drawdowns happen. Stop trading immediately.',
+        stat: 'Your notional increases during loss streaks - classic "trying to get it back" loop'
+      });
+    }
   }
-  
+
   return warnings;
 }, [trades, settings]);
 
@@ -147,24 +327,60 @@ const StatCard = ({ label, value, sub, color }) => (
   </div>
 );
 
-const TiltWarnings = ({ warnings }) => {
+const TiltWarnings = ({ warnings, compact = false }) => {
   const [dismissed, setDismissed] = useState({});
   const active = warnings.filter(w => !dismissed[w.type]);
   if (!active.length) return null;
-  
+
+  const getSeverityStyles = (severity) => {
+    switch (severity) {
+      case 'critical':
+        return { bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', icon: 'text-red-400' };
+      case 'warning':
+        return { bg: 'bg-orange-500/10 border-orange-500/30', text: 'text-orange-400', icon: 'text-orange-400' };
+      case 'info':
+        return { bg: 'bg-blue-500/10 border-blue-500/30', text: 'text-blue-400', icon: 'text-blue-400' };
+      default:
+        return { bg: 'bg-slate-500/10 border-slate-500/30', text: 'text-slate-400', icon: 'text-slate-400' };
+    }
+  };
+
   return (
-    <div className="mb-5 space-y-2">
-      {active.map(w => (
-        <div key={w.type} className={`rounded-lg p-3 flex items-start gap-3 ${w.severity === 'critical' ? 'bg-red-500/10 border border-red-500/30' : 'bg-orange-500/10 border border-orange-500/30'}`}>
-          <Icons.Warning />
-          <div className="flex-1">
-            <div className={`text-xs font-semibold uppercase ${w.severity === 'critical' ? 'text-red-400' : 'text-orange-400'}`}>{w.type.replace(/-/g, ' ')}</div>
-            <div className="text-sm text-white mt-1">{w.message}</div>
-            <div className="text-xs text-slate-400 mt-1">💡 {w.suggestion}</div>
+    <div className={`${compact ? 'space-y-2' : 'mb-5 space-y-2'}`}>
+      {active.map(w => {
+        const styles = getSeverityStyles(w.severity);
+        return (
+          <div key={w.type} className={`rounded-lg ${compact ? 'p-3' : 'p-4'} flex items-start gap-3 border ${styles.bg}`}>
+            <div className={`mt-0.5 ${styles.icon}`}><Icons.Warning /></div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-semibold uppercase ${styles.text}`}>
+                  {w.type.replace(/-/g, ' ')}
+                </span>
+                {w.severity === 'critical' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-medium">
+                    HIGH RISK
+                  </span>
+                )}
+              </div>
+              <div className="text-sm text-white mt-1">{w.message}</div>
+              {w.stat && (
+                <div className="text-xs text-slate-500 mt-1.5 font-mono bg-slate-900/50 rounded px-2 py-1">
+                  📊 {w.stat}
+                </div>
+              )}
+              <div className="text-xs text-slate-400 mt-2">💡 {w.suggestion}</div>
+            </div>
+            <button
+              onClick={() => setDismissed(p => ({ ...p, [w.type]: true }))}
+              className="text-slate-500 hover:text-white flex-shrink-0"
+              title="Dismiss"
+            >
+              <Icons.X />
+            </button>
           </div>
-          <button onClick={() => setDismissed(p => ({ ...p, [w.type]: true }))} className="text-slate-500 hover:text-white"><Icons.X /></button>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
@@ -408,11 +624,17 @@ const Dashboard = ({ trades, settings, prices, warnings }) => {
   );
 };
 
-const NewTrade = ({ onSubmit, tickers, prices, settings, trades }) => {
+const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ direction: 'long', symbol: '', positionSizeUSD: '', entry: '', stopLoss: '', takeProfit: '', leverage: 2, strategies: [], notes: '', confidence: 3, screenshot: null });
   const [search, setSearch] = useState('');
   const [showDrop, setShowDrop] = useState(false);
+  const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
+
+  // Filter warnings relevant to new trade entry
+  const criticalWarnings = warnings.filter(w => w.severity === 'critical');
+  const otherWarnings = warnings.filter(w => w.severity !== 'critical');
+  const hasCriticalWarnings = criticalWarnings.length > 0;
 
   const filtered = useMemo(() => {
     if (!search) return tickers.slice(0, 30);
@@ -459,6 +681,36 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades }) => {
 
   return (
     <div>
+      {/* Pre-Trade Warnings */}
+      {warnings.length > 0 && (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-medium text-slate-400">Pre-Trade Check</span>
+            {hasCriticalWarnings && (
+              <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-medium">
+                {criticalWarnings.length} Critical Warning{criticalWarnings.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <TiltWarnings warnings={warnings} compact />
+          {hasCriticalWarnings && !acknowledgedWarnings && (
+            <div className="mt-3 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acknowledgedWarnings}
+                  onChange={(e) => setAcknowledgedWarnings(e.target.checked)}
+                  className="w-4 h-4 rounded border-red-500/50 bg-slate-800 text-red-500 focus:ring-red-500/50"
+                />
+                <span className="text-sm text-red-300">
+                  I understand the risks and still want to enter this trade
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2 mb-6">
         {[1, 2].map(s => <button key={s} onClick={() => setStep(s)} className={`px-4 py-2 rounded-lg text-sm font-medium ${step === s ? 'bg-blue-600 text-white' : 'bg-slate-700/50 text-slate-400'}`}>{s === 1 ? 'Trade Details' : 'Strategy'}</button>)}
       </div>
@@ -570,12 +822,12 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades }) => {
                   )}
                 </div>
               </div>
-              <button 
-                onClick={submit} 
-                disabled={!form.symbol || !form.entry || !form.stopLoss || !form.positionSizeUSD} 
+              <button
+                onClick={submit}
+                disabled={!form.symbol || !form.entry || !form.stopLoss || !form.positionSizeUSD || (hasCriticalWarnings && !acknowledgedWarnings)}
                 className={`w-full py-3 rounded-lg text-white font-semibold ${form.direction === 'long' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
               >
-                Open {form.direction === 'long' ? 'Long' : 'Short'}
+                {hasCriticalWarnings && !acknowledgedWarnings ? 'Acknowledge Warnings First' : `Open ${form.direction === 'long' ? 'Long' : 'Short'}`}
               </button>
             </>
           )}
@@ -760,31 +1012,113 @@ const SettingsPage = ({ settings, onUpdate, trades }) => {
   const [local, setLocal] = useState(settings);
   const pnl = trades.filter(t => t.status === 'closed').reduce((s, t) => s + (t.pnl || 0), 0);
   const save = (f, v) => { const n = { ...local, [f]: parseFloat(v) || 0 }; setLocal(n); onUpdate(n); };
+  const saveToggle = (f, v) => { const n = { ...local, [f]: v }; setLocal(n); onUpdate(n); };
   const inputCls = "w-full px-3 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-blue-500";
+
+  const ToggleSwitch = ({ checked, onChange, label, description, stat }) => (
+    <div className="flex items-start gap-3 p-3 bg-slate-700/20 rounded-lg mb-2">
+      <button
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${checked ? 'bg-emerald-600' : 'bg-slate-600'}`}
+      >
+        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
+      </button>
+      <div className="flex-1">
+        <div className="text-sm font-medium text-white">{label}</div>
+        <div className="text-xs text-slate-500 mt-0.5">{description}</div>
+        {stat && <div className="text-xs text-slate-600 mt-1 font-mono">{stat}</div>}
+      </div>
+    </div>
+  );
 
   return (
     <div className="grid grid-cols-2 gap-5">
-      <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-        <h3 className="text-base font-semibold mb-5">💰 Account</h3>
-        <div className="mb-5">
-          <label className="block text-xs text-slate-500 uppercase mb-1.5">Base Balance</label>
-          <input type="number" value={local.accountBalance} onChange={e => save('accountBalance', e.target.value)} className={inputCls} />
+      <div className="space-y-5">
+        {/* Account Settings */}
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+          <h3 className="text-base font-semibold mb-5">💰 Account</h3>
+          <div className="mb-5">
+            <label className="block text-xs text-slate-500 uppercase mb-1.5">Base Balance</label>
+            <input type="number" value={local.accountBalance} onChange={e => save('accountBalance', e.target.value)} className={inputCls} />
+          </div>
+          <div className="bg-slate-700/30 rounded-lg p-4">
+            <div className="flex justify-between mb-2 text-sm"><span className="text-slate-500">Base</span><span className="font-mono">{formatCurrency(local.accountBalance)}</span></div>
+            <div className="flex justify-between mb-2 text-sm"><span className="text-slate-500">Realized P&L</span><span className={`font-mono ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(pnl)}</span></div>
+            <div className="border-t border-slate-600 pt-2 mt-2 flex justify-between"><span className="font-medium">Current</span><span className="font-mono font-semibold">{formatCurrency(local.accountBalance + pnl)}</span></div>
+          </div>
         </div>
-        <div className="bg-slate-700/30 rounded-lg p-4">
-          <div className="flex justify-between mb-2 text-sm"><span className="text-slate-500">Base</span><span className="font-mono">{formatCurrency(local.accountBalance)}</span></div>
-          <div className="flex justify-between mb-2 text-sm"><span className="text-slate-500">Realized P&L</span><span className={`font-mono ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(pnl)}</span></div>
-          <div className="border-t border-slate-600 pt-2 mt-2 flex justify-between"><span className="font-medium">Current</span><span className="font-mono font-semibold">{formatCurrency(local.accountBalance + pnl)}</span></div>
+
+        {/* Risk Settings */}
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+          <h3 className="text-base font-semibold mb-5">⚠️ Risk Settings</h3>
+          {[{ f: 'maxRiskPerTrade', l: 'Max Risk/Trade (%)', d: 'Warning when single trade exceeds' },{ f: 'maxTotalOpenRisk', l: 'Max Total Risk (%)', d: 'Warning when all positions exceed' },{ f: 'consecutiveLossesAlert', l: 'Loss Streak Alert', d: 'Tilt warning after X consecutive losses' }].map(x => (
+            <div key={x.f} className="mb-4">
+              <label className="block text-xs text-slate-500 uppercase mb-1.5">{x.l}</label>
+              <input type="number" value={local[x.f]} onChange={e => save(x.f, e.target.value)} className={inputCls} />
+              <div className="text-xs text-slate-600 mt-1">{x.d}</div>
+            </div>
+          ))}
         </div>
       </div>
+
+      {/* Tilt Detection Settings */}
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-        <h3 className="text-base font-semibold mb-5">⚠️ Risk Settings</h3>
-        {[{ f: 'maxRiskPerTrade', l: 'Max Risk/Trade (%)', d: 'Warning when single trade exceeds' },{ f: 'maxTotalOpenRisk', l: 'Max Total Risk (%)', d: 'Warning when all positions exceed' },{ f: 'consecutiveLossesAlert', l: 'Loss Streak Alert', d: 'Tilt warning after X losses' }].map(x => (
-          <div key={x.f} className="mb-4">
-            <label className="block text-xs text-slate-500 uppercase mb-1.5">{x.l}</label>
-            <input type="number" value={local[x.f]} onChange={e => save(x.f, e.target.value)} className={inputCls} />
-            <div className="text-xs text-slate-600 mt-1">{x.d}</div>
-          </div>
-        ))}
+        <h3 className="text-base font-semibold mb-2">🧠 Tilt Detection</h3>
+        <p className="text-xs text-slate-500 mb-5">Data-driven warnings based on your trading patterns</p>
+
+        <div className="space-y-1">
+          <ToggleSwitch
+            checked={local.enableDayFilter !== false}
+            onChange={(v) => saveToggle('enableDayFilter', v)}
+            label="Day of Week Warnings"
+            description="Warn on historically losing days (Thu, Sun, Tue)"
+            stat="Thu: -$43/trade • Sun: -$28/trade • Tue: -$18/trade"
+          />
+
+          <ToggleSwitch
+            checked={local.enableHourFilter !== false}
+            onChange={(v) => saveToggle('enableHourFilter', v)}
+            label="Time of Day Warnings"
+            description="Warn during danger hours (22:00)"
+            stat="22:00 hour: -$34/trade avg, PF 0.40"
+          />
+
+          <ToggleSwitch
+            checked={local.enableStreakWarning !== false}
+            onChange={(v) => saveToggle('enableStreakWarning', v)}
+            label="Losing Streak Warnings"
+            description="Warn when on a losing streak"
+            stat="After 2 losses: 27% WR • After 3+: 28% WR, -$25 avg"
+          />
+
+          <ToggleSwitch
+            checked={local.enablePostLossWarning !== false}
+            onChange={(v) => saveToggle('enablePostLossWarning', v)}
+            label="Post-Loss & Cooldown Warnings"
+            description="Warn about rapid re-entry after losses"
+            stat="Re-entry <30min: -$83 avg, 11% WR (revenge zone)"
+          />
+
+          <ToggleSwitch
+            checked={local.enableOvertradingWarning !== false}
+            onChange={(v) => saveToggle('enableOvertradingWarning', v)}
+            label="Overtrading Warnings"
+            description="Warn when exceeding 3 trades per day"
+            stat="7+ trades/day: -$166/day average"
+          />
+        </div>
+
+        {/* Info Box */}
+        <div className="mt-5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+          <div className="text-xs font-medium text-blue-400 mb-2">📊 Your Trading Data Shows:</div>
+          <ul className="text-xs text-slate-400 space-y-1">
+            <li>• Best days: Friday (+$17/trade), Wednesday (+$5/trade)</li>
+            <li>• Best hours: 15:00 (+$55/trade), 02:00 (+$46/trade)</li>
+            <li>• After a win: +$11 avg, 50% WR</li>
+            <li>• After a loss: -$21 avg, 27% WR</li>
+            <li>• Wait 2+ hours after loss for 33% WR (vs 11-19% if &lt;30min)</li>
+          </ul>
+        </div>
       </div>
     </div>
   );
@@ -793,9 +1127,20 @@ const SettingsPage = ({ settings, onUpdate, trades }) => {
 // Main App
 export default function App() {
   const [screen, setScreen] = useState('dashboard');
-  const [state, setState] = useState({ 
-    settings: { accountBalance: 10000, maxRiskPerTrade: 2, maxTotalOpenRisk: 5, consecutiveLossesAlert: 3 }, 
-    trades: [] 
+  const [state, setState] = useState({
+    settings: {
+      accountBalance: 10000,
+      maxRiskPerTrade: 2,
+      maxTotalOpenRisk: 5,
+      consecutiveLossesAlert: 2,
+      // Tilt detection toggles
+      enableDayFilter: true,
+      enableHourFilter: true,
+      enableStreakWarning: true,
+      enablePostLossWarning: true,
+      enableOvertradingWarning: true,
+    },
+    trades: []
   });
   
   const { tickers, prices, isLive, refreshPrices } = useMarketData();
@@ -848,7 +1193,7 @@ export default function App() {
           </div>
         </div>
         {screen === 'dashboard' && <Dashboard trades={state.trades} settings={state.settings} prices={prices} warnings={warnings} />}
-        {screen === 'new' && <NewTrade onSubmit={addTrade} tickers={tickers} prices={prices} settings={state.settings} trades={state.trades} />}
+        {screen === 'new' && <NewTrade onSubmit={addTrade} tickers={tickers} prices={prices} settings={state.settings} trades={state.trades} warnings={warnings} />}
         {screen === 'active' && <ActiveTrades trades={state.trades} prices={prices} onClose={closeTrade} settings={state.settings} />}
         {screen === 'closed' && <ClosedTrades trades={state.trades} />}
         {screen === 'settings' && <SettingsPage settings={state.settings} onUpdate={updateSettings} trades={state.trades} />}
