@@ -1,3 +1,139 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Black Slate Minimalist Theme */
+:root {
+  --glow-emerald: 0 0 20px rgba(16, 185, 129, 0.15), 0 0 40px rgba(16, 185, 129, 0.05);
+  --glow-red: 0 0 20px rgba(239, 68, 68, 0.15), 0 0 40px rgba(239, 68, 68, 0.05);
+  --glow-blue: 0 0 20px rgba(59, 130, 246, 0.15), 0 0 40px rgba(59, 130, 246, 0.05);
+  --glow-orange: 0 0 20px rgba(249, 115, 22, 0.15), 0 0 40px rgba(249, 115, 22, 0.05);
+  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.15), 0 0 40px rgba(168, 85, 247, 0.05);
+}
+
+body {
+  background-color: #0a0a0b;
+  color: #e4e4e7;
+}
+
+/* Subtle glow utilities */
+.glow-emerald {
+  box-shadow: var(--glow-emerald);
+}
+.glow-red {
+  box-shadow: var(--glow-red);
+}
+.glow-blue {
+  box-shadow: var(--glow-blue);
+}
+.glow-orange {
+  box-shadow: var(--glow-orange);
+}
+.glow-purple {
+  box-shadow: var(--glow-purple);
+}
+
+/* Soft ambient glow on hover */
+.glow-hover-emerald:hover {
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.2), 0 0 50px rgba(16, 185, 129, 0.08);
+}
+.glow-hover-red:hover {
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.2), 0 0 50px rgba(239, 68, 68, 0.08);
+}
+.glow-hover-blue:hover {
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.2), 0 0 50px rgba(59, 130, 246, 0.08);
+}
+
+/* Card and surface styling */
+.card-dark {
+  background: linear-gradient(145deg, rgba(17, 17, 19, 0.9), rgba(12, 12, 14, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0b;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Input focus glow */
+input:focus, textarea:focus, select:focus {
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3), 0 0 15px rgba(59, 130, 246, 0.1);
+}
+
+/* Pulse animation for live indicators */
+@keyframes soft-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-soft-pulse {
+  animation: soft-pulse 2s ease-in-out infinite;
+}
+
+/* Warning card glows */
+.warning-critical {
+  box-shadow: inset 0 0 30px rgba(239, 68, 68, 0.03), 0 0 20px rgba(239, 68, 68, 0.05);
+}
+.warning-caution {
+  box-shadow: inset 0 0 30px rgba(249, 115, 22, 0.03), 0 0 20px rgba(249, 115, 22, 0.05);
+}
+.warning-info {
+  box-shadow: inset 0 0 30px rgba(59, 130, 246, 0.03), 0 0 20px rgba(59, 130, 246, 0.05);
+}
+
+/* Stat card number glow */
+.stat-emerald {
+  text-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+.stat-red {
+  text-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+.stat-blue {
+  text-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+.stat-orange {
+  text-shadow: 0 0 20px rgba(249, 115, 22, 0.4);
+}
+.stat-purple {
+  text-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+}
+
+/* Button glow states */
+.btn-glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+  transition: box-shadow 0.2s ease;
+}
+.btn-glow-emerald:hover {
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.35);
+}
+.btn-glow-red {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+  transition: box-shadow 0.2s ease;
+}
+.btn-glow-red:hover {
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.35);
+}
+.btn-glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  transition: box-shadow 0.2s ease;
+}
+.btn-glow-blue:hover {
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.35);
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}

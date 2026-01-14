@@ -319,13 +319,19 @@ const useTiltDetection = (trades, settings) => useMemo(() => {
 }, [trades, settings]);
 
 // Components
-const StatCard = ({ label, value, sub, color }) => (
-  <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-    <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">{label}</div>
-    <div className={`text-xl font-semibold font-mono ${color || 'text-white'}`}>{value}</div>
-    {sub && <div className="text-xs text-slate-500 mt-1">{sub}</div>}
-  </div>
-);
+const StatCard = ({ label, value, sub, color, glowColor }) => {
+  const glowClass = glowColor === 'emerald' ? 'stat-emerald' :
+                    glowColor === 'red' ? 'stat-red' :
+                    glowColor === 'orange' ? 'stat-orange' :
+                    glowColor === 'blue' ? 'stat-blue' : '';
+  return (
+    <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/50 hover:border-zinc-700/50 transition-all">
+      <div className="text-[11px] text-zinc-500 uppercase tracking-wider mb-1.5">{label}</div>
+      <div className={`text-xl font-semibold font-mono ${color || 'text-zinc-100'} ${glowClass}`}>{value}</div>
+      {sub && <div className="text-xs text-zinc-600 mt-1">{sub}</div>}
+    </div>
+  );
+};
 
 const TiltWarnings = ({ warnings, compact = false }) => {
   const [dismissed, setDismissed] = useState({});
@@ -335,13 +341,13 @@ const TiltWarnings = ({ warnings, compact = false }) => {
   const getSeverityStyles = (severity) => {
     switch (severity) {
       case 'critical':
-        return { bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', icon: 'text-red-400' };
+        return { bg: 'bg-red-950/40 border-red-900/30', glow: 'warning-critical', text: 'text-red-400', icon: 'text-red-400' };
       case 'warning':
-        return { bg: 'bg-orange-500/10 border-orange-500/30', text: 'text-orange-400', icon: 'text-orange-400' };
+        return { bg: 'bg-orange-950/30 border-orange-900/20', glow: 'warning-caution', text: 'text-orange-400', icon: 'text-orange-400' };
       case 'info':
-        return { bg: 'bg-blue-500/10 border-blue-500/30', text: 'text-blue-400', icon: 'text-blue-400' };
+        return { bg: 'bg-blue-950/30 border-blue-900/20', glow: 'warning-info', text: 'text-blue-400', icon: 'text-blue-400' };
       default:
-        return { bg: 'bg-slate-500/10 border-slate-500/30', text: 'text-slate-400', icon: 'text-slate-400' };
+        return { bg: 'bg-zinc-900/50 border-zinc-800/30', glow: '', text: 'text-zinc-400', icon: 'text-zinc-400' };
     }
   };
 
@@ -350,30 +356,30 @@ const TiltWarnings = ({ warnings, compact = false }) => {
       {active.map(w => {
         const styles = getSeverityStyles(w.severity);
         return (
-          <div key={w.type} className={`rounded-lg ${compact ? 'p-3' : 'p-4'} flex items-start gap-3 border ${styles.bg}`}>
+          <div key={w.type} className={`rounded-xl ${compact ? 'p-3' : 'p-4'} flex items-start gap-3 border ${styles.bg} ${styles.glow}`}>
             <div className={`mt-0.5 ${styles.icon}`}><Icons.Warning /></div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-semibold uppercase ${styles.text}`}>
+                <span className={`text-[11px] font-semibold uppercase tracking-wide ${styles.text}`}>
                   {w.type.replace(/-/g, ' ')}
                 </span>
                 {w.severity === 'critical' && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-medium">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-red-500/10 text-red-300/90 font-medium border border-red-500/20">
                     HIGH RISK
                   </span>
                 )}
               </div>
-              <div className="text-sm text-white mt-1">{w.message}</div>
+              <div className="text-sm text-zinc-200 mt-1.5">{w.message}</div>
               {w.stat && (
-                <div className="text-xs text-slate-500 mt-1.5 font-mono bg-slate-900/50 rounded px-2 py-1">
-                  📊 {w.stat}
+                <div className="text-[11px] text-zinc-500 mt-2 font-mono bg-black/30 rounded-lg px-2.5 py-1.5 border border-zinc-800/30">
+                  {w.stat}
                 </div>
               )}
-              <div className="text-xs text-slate-400 mt-2">💡 {w.suggestion}</div>
+              <div className="text-xs text-zinc-500 mt-2">{w.suggestion}</div>
             </div>
             <button
               onClick={() => setDismissed(p => ({ ...p, [w.type]: true }))}
-              className="text-slate-500 hover:text-white flex-shrink-0"
+              className="text-zinc-600 hover:text-zinc-300 flex-shrink-0 transition-colors"
               title="Dismiss"
             >
               <Icons.X />
@@ -462,80 +468,83 @@ const Calculator = ({ form, settings, trades, onFormChange }) => {
   const highTotal = calc && !calc.partial && calc.totalRiskPct > settings.maxTotalOpenRisk;
 
   return (
-    <div className={`rounded-xl p-5 border ${highRisk || highTotal ? 'border-red-500/50 bg-slate-800/50' : 'border-slate-700/50 bg-slate-800/30'}`}>
-      <div className="flex items-center gap-2 text-sm font-medium text-slate-400 mb-4">📊 Live Calculator <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/></div>
-      <div className="space-y-2">
+    <div className={`rounded-xl p-5 border ${highRisk || highTotal ? 'border-red-900/40 bg-red-950/20 warning-critical' : 'border-zinc-800/50 bg-zinc-900/60'}`}>
+      <div className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-4">
+        <span className="text-zinc-500">Live Calculator</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-soft-pulse"/>
+      </div>
+      <div className="space-y-2.5">
         {/* Editable Trade Risk */}
-        <div className={`p-3 rounded-lg ${highRisk ? 'bg-red-500/10 border border-red-500/30' : 'bg-slate-700/30'}`}>
+        <div className={`p-3.5 rounded-xl ${highRisk ? 'bg-red-950/30 border border-red-900/30 warning-critical' : 'bg-zinc-800/40 border border-zinc-800/30'}`}>
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-slate-400">Trade Risk {highRisk && '⚠️'}</span>
-            {calc && !calc.partial && <span className="text-xs text-slate-500">{calc.riskPct.toFixed(2)}% of account</span>}
+            <span className="text-sm text-zinc-400">Trade Risk</span>
+            {calc && !calc.partial && <span className="text-xs text-zinc-500">{calc.riskPct.toFixed(2)}% of account</span>}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-slate-500">$</span>
-            <input 
-              type="number" 
+            <span className="text-zinc-600">$</span>
+            <input
+              type="number"
               value={manualRisk}
               onChange={e => handleRiskChange(e.target.value)}
               onFocus={() => setRiskFocused(true)}
               onBlur={() => setRiskFocused(false)}
               placeholder="0.00"
-              className={`flex-1 bg-transparent font-mono font-semibold text-lg outline-none ${highRisk ? 'text-red-400' : 'text-orange-400'}`}
+              className={`flex-1 bg-transparent font-mono font-semibold text-lg outline-none ${highRisk ? 'text-red-400 stat-red' : 'text-orange-400 stat-orange'}`}
             />
           </div>
-          <div className="text-xs text-slate-600 mt-1">Edit to auto-calculate position size</div>
+          <div className="text-[11px] text-zinc-600 mt-1.5">Edit to auto-calculate position size</div>
         </div>
 
         {/* Trade Reward */}
         {calc && !calc.partial && (
-          <div className="flex justify-between p-3 rounded-lg bg-slate-700/30">
-            <span className="text-sm text-slate-400">Trade Reward</span>
+          <div className="flex justify-between p-3.5 rounded-xl bg-zinc-800/40 border border-zinc-800/30">
+            <span className="text-sm text-zinc-400">Trade Reward</span>
             <div className="text-right">
-              <div className="font-mono font-semibold text-emerald-400">{formatCurrency(calc.rewardDollar)}</div>
-              <div className="text-xs text-slate-500">{calc.rewardPct.toFixed(2)}%</div>
+              <div className="font-mono font-semibold text-emerald-400 stat-emerald">{formatCurrency(calc.rewardDollar)}</div>
+              <div className="text-xs text-zinc-500">{calc.rewardPct.toFixed(2)}%</div>
             </div>
           </div>
         )}
 
         {/* Risk:Reward */}
         {calc && !calc.partial && calc.rr > 0 && (
-          <div className="flex justify-between p-3 rounded-lg bg-slate-700/30">
-            <span className="text-sm text-slate-400">Risk:Reward</span>
-            <div className={`font-mono text-lg font-bold ${calc.rr >= 2 ? 'text-emerald-400' : calc.rr >= 1 ? 'text-orange-400' : 'text-red-400'}`}>1:{calc.rr.toFixed(2)}</div>
+          <div className="flex justify-between p-3.5 rounded-xl bg-zinc-800/40 border border-zinc-800/30">
+            <span className="text-sm text-zinc-400">Risk:Reward</span>
+            <div className={`font-mono text-lg font-bold ${calc.rr >= 2 ? 'text-emerald-400 stat-emerald' : calc.rr >= 1 ? 'text-orange-400 stat-orange' : 'text-red-400 stat-red'}`}>1:{calc.rr.toFixed(2)}</div>
           </div>
         )}
 
         {/* Divider */}
-        <div className="border-t border-slate-700 my-2"></div>
+        <div className="border-t border-zinc-800/50 my-3"></div>
 
         {/* Position Value after Leverage */}
         {calc && !calc.partial && (
-          <div className="flex justify-between p-3 rounded-lg bg-slate-700/30">
+          <div className="flex justify-between p-3.5 rounded-xl bg-zinc-800/40 border border-zinc-800/30">
             <div>
-              <span className="text-sm text-slate-400">Position Value</span>
-              <div className="text-xs text-slate-600">With {calc.leverage}x leverage</div>
+              <span className="text-sm text-zinc-400">Position Value</span>
+              <div className="text-[11px] text-zinc-600">With {calc.leverage}x leverage</div>
             </div>
             <div className="text-right">
-              <div className="font-mono font-semibold text-purple-400">{formatCurrency(calc.leveragedPositionUSD)}</div>
-              <div className="text-xs text-slate-500">{calc.coinQty.toFixed(6)} {form.symbol}</div>
+              <div className="font-mono font-semibold text-purple-400 stat-purple">{formatCurrency(calc.leveragedPositionUSD)}</div>
+              <div className="text-xs text-zinc-500">{calc.coinQty.toFixed(6)} {form.symbol}</div>
             </div>
           </div>
         )}
 
         {/* Total Open Risk */}
-        <div className={`p-4 rounded-lg ${highTotal ? 'bg-red-500/20 border border-red-500/30' : 'bg-blue-500/10 border border-blue-500/30'}`}>
+        <div className={`p-4 rounded-xl ${highTotal ? 'bg-red-950/30 border border-red-900/30 warning-critical' : 'bg-blue-950/20 border border-blue-900/20 warning-info'}`}>
           <div className="flex justify-between items-start">
             <div>
-              <div className={`text-sm font-semibold ${highTotal ? 'text-red-400' : 'text-blue-400'}`}>Total Open Risk {highTotal && '⚠️'}</div>
-              <div className="text-xs text-slate-500 mt-1">
+              <div className={`text-sm font-medium ${highTotal ? 'text-red-400' : 'text-blue-400'}`}>Total Open Risk</div>
+              <div className="text-[11px] text-zinc-500 mt-1">
                 Current: {calc.currentRiskPct.toFixed(1)}% {calc && !calc.partial && `+ New: ${calc.riskPct.toFixed(1)}%`}
               </div>
             </div>
             <div className="text-right">
-              <div className={`font-mono text-xl font-bold ${highTotal ? 'text-red-400' : 'text-blue-400'}`}>
+              <div className={`font-mono text-xl font-bold ${highTotal ? 'text-red-400 stat-red' : 'text-blue-400 stat-blue'}`}>
                 {calc && !calc.partial ? calc.totalRiskPct.toFixed(1) : calc.currentRiskPct.toFixed(1)}%
               </div>
-              <div className={`font-mono text-sm ${highTotal ? 'text-red-400/70' : 'text-blue-400/70'}`}>
+              <div className={`font-mono text-sm ${highTotal ? 'text-red-400/60' : 'text-blue-400/60'}`}>
                 {formatCurrency(calc && !calc.partial ? calc.totalRiskDollar : calc.currentRiskDollar)}
               </div>
             </div>
@@ -567,14 +576,17 @@ const Dashboard = ({ trades, settings, prices, warnings }) => {
       <TiltWarnings warnings={warnings} />
       <div className="grid grid-cols-4 gap-3 mb-5">
         <StatCard label="Account Value" value={formatCurrency(settings.accountBalance + totalPnl + openPnl)} sub={`Base: ${formatCurrency(settings.accountBalance)}`} />
-        <StatCard label="Open Risk" value={`${openRisk.toFixed(1)}%`} color={openRisk > settings.maxTotalOpenRisk ? 'text-red-400' : 'text-orange-400'} />
-        <StatCard label="Total P&L" value={formatCurrency(totalPnl)} color={totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-        <StatCard label="Win Rate" value={`${winRate.toFixed(0)}%`} sub={`${wins}W / ${closed.length - wins}L`} color={winRate >= 50 ? 'text-emerald-400' : 'text-red-400'} />
+        <StatCard label="Open Risk" value={`${openRisk.toFixed(1)}%`} color={openRisk > settings.maxTotalOpenRisk ? 'text-red-400' : 'text-orange-400'} glowColor={openRisk > settings.maxTotalOpenRisk ? 'red' : 'orange'} />
+        <StatCard label="Total P&L" value={formatCurrency(totalPnl)} color={totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'} glowColor={totalPnl >= 0 ? 'emerald' : 'red'} />
+        <StatCard label="Win Rate" value={`${winRate.toFixed(0)}%`} sub={`${wins}W / ${closed.length - wins}L`} color={winRate >= 50 ? 'text-emerald-400' : 'text-red-400'} glowColor={winRate >= 50 ? 'emerald' : 'red'} />
       </div>
       <div className="grid grid-cols-2 gap-5">
-        <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/>Open Positions ({open.length})</h3>
-          {!open.length ? <div className="text-center text-slate-600 py-8">No open positions</div> : (
+        <div className="bg-zinc-900/80 rounded-xl p-5 border border-zinc-800/50">
+          <h3 className="text-sm font-medium text-zinc-300 mb-4 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-soft-pulse"/>
+            Open Positions ({open.length})
+          </h3>
+          {!open.length ? <div className="text-center text-zinc-600 py-8">No open positions</div> : (
             <div className="space-y-2">
               {open.map(t => {
                 const p = parseFloat(prices[t.symbol]) || t.entry;
@@ -583,15 +595,15 @@ const Dashboard = ({ trades, settings, prices, warnings }) => {
                 const pnl = t.direction === 'long' ? pctMove * leveragedPos : -pctMove * leveragedPos;
                 const pnlPct = (pnl / t.positionSizeUSD) * 100;
                 return (
-                  <div key={t.id} className="bg-slate-700/30 rounded-lg p-3">
+                  <div key={t.id} className={`bg-zinc-800/50 rounded-xl p-3.5 border border-zinc-800/30 ${pnl >= 0 ? 'glow-hover-emerald' : 'glow-hover-red'}`}>
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-semibold">{t.symbol}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded ${t.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{t.direction.toUpperCase()} {t.leverage}x</span>
+                        <span className="font-mono font-semibold text-zinc-100">{t.symbol}</span>
+                        <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium ${t.direction === 'long' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{t.direction.toUpperCase()} {t.leverage}x</span>
                       </div>
-                      <span className={`font-mono font-semibold ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(pnl)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%)</span>
+                      <span className={`font-mono font-semibold ${pnl >= 0 ? 'text-emerald-400 stat-emerald' : 'text-red-400 stat-red'}`}>{formatCurrency(pnl)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%)</span>
                     </div>
-                    <div className="flex gap-4 text-xs text-slate-500 mt-2">
+                    <div className="flex gap-4 text-[11px] text-zinc-500 mt-2.5">
                       <span>Entry: {formatCurrency(t.entry)}</span>
                       <span>Current: {formatCurrency(p)}</span>
                       <span>Size: {formatCurrency(t.positionSizeUSD)}</span>
@@ -603,15 +615,15 @@ const Dashboard = ({ trades, settings, prices, warnings }) => {
             </div>
           )}
         </div>
-        <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
-          <h3 className="text-sm font-semibold mb-4">Recent Closed</h3>
-          {!closed.length ? <div className="text-center text-slate-600 py-8">No closed trades</div> : (
-            <div className="space-y-1">
+        <div className="bg-zinc-900/80 rounded-xl p-5 border border-zinc-800/50">
+          <h3 className="text-sm font-medium text-zinc-300 mb-4">Recent Closed</h3>
+          {!closed.length ? <div className="text-center text-zinc-600 py-8">No closed trades</div> : (
+            <div className="space-y-1.5">
               {closed.slice(-5).reverse().map(t => (
-                <div key={t.id} className="flex justify-between items-center p-2 bg-slate-700/30 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${t.pnl >= 0 ? 'bg-emerald-400' : 'bg-red-400'}`}/>
-                    <span className="font-mono text-sm">{t.symbol}</span>
+                <div key={t.id} className="flex justify-between items-center p-2.5 bg-zinc-800/40 rounded-lg border border-zinc-800/30 hover:border-zinc-700/50 transition-colors">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${t.pnl >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}/>
+                    <span className="font-mono text-sm text-zinc-200">{t.symbol}</span>
                   </div>
                   <span className={`font-mono font-semibold text-sm ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(t.pnl)}</span>
                 </div>
@@ -676,33 +688,33 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => 
     setSearch(''); setStep(1);
   };
 
-  const inputCls = "w-full px-3 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-blue-500";
-  const labelCls = "block text-xs text-slate-500 uppercase tracking-wide mb-1.5";
+  const inputCls = "w-full px-3.5 py-2.5 bg-zinc-900/80 border border-zinc-800 rounded-xl text-zinc-100 font-mono text-sm focus:outline-none focus:border-zinc-600";
+  const labelCls = "block text-[11px] text-zinc-500 uppercase tracking-wider mb-1.5";
 
   return (
     <div>
       {/* Pre-Trade Warnings */}
       {warnings.length > 0 && (
-        <div className="mb-5">
+        <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-medium text-slate-400">Pre-Trade Check</span>
+            <span className="text-sm font-medium text-zinc-400">Pre-Trade Check</span>
             {hasCriticalWarnings && (
-              <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-medium">
+              <span className="text-[11px] px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 font-medium border border-red-500/20">
                 {criticalWarnings.length} Critical Warning{criticalWarnings.length > 1 ? 's' : ''}
               </span>
             )}
           </div>
           <TiltWarnings warnings={warnings} compact />
           {hasCriticalWarnings && !acknowledgedWarnings && (
-            <div className="mt-3 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+            <div className="mt-3 p-4 bg-red-950/20 border border-red-900/30 rounded-xl warning-critical">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={acknowledgedWarnings}
                   onChange={(e) => setAcknowledgedWarnings(e.target.checked)}
-                  className="w-4 h-4 rounded border-red-500/50 bg-slate-800 text-red-500 focus:ring-red-500/50"
+                  className="w-4 h-4 rounded border-red-800 bg-zinc-900 text-red-500 focus:ring-red-500/30"
                 />
-                <span className="text-sm text-red-300">
+                <span className="text-sm text-red-300/90">
                   I understand the risks and still want to enter this trade
                 </span>
               </label>
@@ -712,17 +724,17 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => 
       )}
 
       <div className="flex gap-2 mb-6">
-        {[1, 2].map(s => <button key={s} onClick={() => setStep(s)} className={`px-4 py-2 rounded-lg text-sm font-medium ${step === s ? 'bg-blue-600 text-white' : 'bg-slate-700/50 text-slate-400'}`}>{s === 1 ? 'Trade Details' : 'Strategy'}</button>)}
+        {[1, 2].map(s => <button key={s} onClick={() => setStep(s)} className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${step === s ? 'bg-blue-600/90 text-white btn-glow-blue' : 'bg-zinc-800/60 text-zinc-400 border border-zinc-800 hover:border-zinc-700'}`}>{s === 1 ? 'Trade Details' : 'Strategy'}</button>)}
       </div>
       <div className="grid grid-cols-[1fr_320px] gap-5">
-        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+        <div className="bg-zinc-900/80 rounded-xl p-6 border border-zinc-800/50">
           {step === 1 ? (
             <>
               <div className="mb-5">
                 <label className={labelCls}>Direction</label>
                 <div className="flex gap-3">
                   {['long', 'short'].map(d => (
-                    <button key={d} onClick={() => change('direction', d)} className={`flex-1 py-3 rounded-lg font-semibold uppercase ${form.direction === d ? (d === 'long' ? 'bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400' : 'bg-red-500/20 border-2 border-red-500 text-red-400') : 'bg-slate-700/50 border-2 border-slate-600 text-slate-400'}`}>
+                    <button key={d} onClick={() => change('direction', d)} className={`flex-1 py-3 rounded-xl font-semibold uppercase transition-all ${form.direction === d ? (d === 'long' ? 'bg-emerald-500/10 border-2 border-emerald-500/50 text-emerald-400 btn-glow-emerald' : 'bg-red-500/10 border-2 border-red-500/50 text-red-400 btn-glow-red') : 'bg-zinc-800/50 border-2 border-zinc-700/50 text-zinc-500 hover:border-zinc-600'}`}>
                       {d === 'long' ? '↑ Long' : '↓ Short'}
                     </button>
                   ))}
@@ -732,11 +744,11 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => 
                 <label className={labelCls}>Symbol</label>
                 <input type="text" value={search} onChange={e => { setSearch(e.target.value); setShowDrop(true); }} onFocus={() => setShowDrop(true)} placeholder="Search..." className={inputCls} />
                 {showDrop && filtered.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg max-h-64 overflow-auto z-50">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-xl max-h-64 overflow-auto z-50 shadow-xl shadow-black/50">
                     {filtered.map(t => (
-                      <button key={t.symbol} onClick={() => selectSymbol(t.symbol)} className="w-full px-3 py-2.5 flex justify-between hover:bg-slate-700 text-left border-b border-slate-700/50 last:border-0">
-                        <span className="font-mono font-medium">{t.symbol}</span>
-                        <span className="text-emerald-400 text-sm font-mono">{prices[t.symbol] ? formatCurrency(parseFloat(prices[t.symbol])) : '—'}</span>
+                      <button key={t.symbol} onClick={() => selectSymbol(t.symbol)} className="w-full px-3.5 py-2.5 flex justify-between hover:bg-zinc-800 text-left border-b border-zinc-800/50 last:border-0 transition-colors">
+                        <span className="font-mono font-medium text-zinc-200">{t.symbol}</span>
+                        <span className="text-emerald-400/80 text-sm font-mono">{prices[t.symbol] ? formatCurrency(parseFloat(prices[t.symbol])) : '—'}</span>
                       </button>
                     ))}
                   </div>
@@ -754,7 +766,7 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => 
                   <label className={labelCls}>Leverage</label>
                   <div className="flex gap-2">
                     {[2, 5].map(l => (
-                      <button key={l} onClick={() => change('leverage', l)} className={`flex-1 py-2.5 rounded-lg font-mono font-semibold ${form.leverage === l ? 'bg-blue-600 text-white' : 'bg-slate-700/50 text-slate-400'}`}>{l}x</button>
+                      <button key={l} onClick={() => change('leverage', l)} className={`flex-1 py-2.5 rounded-xl font-mono font-semibold transition-all ${form.leverage === l ? 'bg-blue-600/90 text-white btn-glow-blue' : 'bg-zinc-800/50 text-zinc-400 border border-zinc-700/50 hover:border-zinc-600'}`}>{l}x</button>
                     ))}
                   </div>
                 </div>
@@ -764,33 +776,33 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => 
                 <div><label className={labelCls}>Stop Loss</label><input type="number" value={form.stopLoss} onChange={e => change('stopLoss', e.target.value)} placeholder="0.00" className={`${inputCls} ${form.stopLoss ? 'border-red-500/50' : ''}`} step="any" /></div>
                 <div><label className={labelCls}>Take Profit</label><input type="number" value={form.takeProfit} onChange={e => change('takeProfit', e.target.value)} placeholder="0.00" className={`${inputCls} ${form.takeProfit ? 'border-emerald-500/50' : ''}`} step="any" /></div>
               </div>
-              <button onClick={() => setStep(2)} className="w-full py-3 bg-blue-600 rounded-lg text-white font-semibold flex items-center justify-center gap-2">Continue <Icons.ChevronRight /></button>
+              <button onClick={() => setStep(2)} className="w-full py-3 bg-blue-600/90 rounded-xl text-white font-semibold flex items-center justify-center gap-2 btn-glow-blue hover:bg-blue-500/90 transition-all">Continue <Icons.ChevronRight /></button>
             </>
           ) : (
             <>
               <div className="mb-5">
-                <label className={labelCls}>Strategy Tags <span className="text-slate-600 normal-case">(optional)</span></label>
+                <label className={labelCls}>Strategy Tags <span className="text-zinc-600 normal-case">(optional)</span></label>
                 <div className="flex flex-wrap gap-2">
                   {STRATEGY_TAGS.map(t => (
-                    <button key={t.id} onClick={() => toggleStrategy(t.id)} style={{ borderColor: form.strategies.includes(t.id) ? t.color : undefined, backgroundColor: form.strategies.includes(t.id) ? `${t.color}20` : undefined, color: form.strategies.includes(t.id) ? t.color : undefined }} className="px-3 py-1.5 rounded-lg text-sm border border-slate-600 text-slate-400">{t.label}</button>
+                    <button key={t.id} onClick={() => toggleStrategy(t.id)} style={{ borderColor: form.strategies.includes(t.id) ? t.color : undefined, backgroundColor: form.strategies.includes(t.id) ? `${t.color}15` : undefined, color: form.strategies.includes(t.id) ? t.color : undefined }} className="px-3 py-1.5 rounded-lg text-sm border border-zinc-700 text-zinc-400 hover:border-zinc-600 transition-colors">{t.label}</button>
                   ))}
                 </div>
               </div>
               <div className="mb-5">
-                <label className={labelCls}>Confidence <span className="text-slate-600 normal-case">(optional)</span></label>
+                <label className={labelCls}>Confidence <span className="text-zinc-600 normal-case">(optional)</span></label>
                 <div className="flex gap-2">
                   {CONFIDENCE_LEVELS.map(l => (
-                    <button key={l.value} onClick={() => change('confidence', l.value)} style={{ borderColor: form.confidence === l.value ? l.color : undefined, backgroundColor: form.confidence === l.value ? `${l.color}20` : undefined, color: form.confidence === l.value ? l.color : undefined }} className="flex-1 py-2 rounded-lg text-xs border border-slate-600 text-slate-500">{l.label}</button>
+                    <button key={l.value} onClick={() => change('confidence', l.value)} style={{ borderColor: form.confidence === l.value ? l.color : undefined, backgroundColor: form.confidence === l.value ? `${l.color}15` : undefined, color: form.confidence === l.value ? l.color : undefined }} className="flex-1 py-2 rounded-lg text-xs border border-zinc-700 text-zinc-500 hover:border-zinc-600 transition-colors">{l.label}</button>
                   ))}
                 </div>
               </div>
               <div className="mb-5">
-                <label className={labelCls}>Notes <span className="text-slate-600 normal-case">(optional)</span></label>
+                <label className={labelCls}>Notes <span className="text-zinc-600 normal-case">(optional)</span></label>
                 <textarea value={form.notes} onChange={e => change('notes', e.target.value)} placeholder="Trade thesis..." className={`${inputCls} min-h-[80px] resize-none`} />
               </div>
               <div className="mb-6">
-                <label className={labelCls}>Chart Screenshot <span className="text-slate-600 normal-case">(optional)</span></label>
-                <div className={`border-2 border-dashed rounded-lg ${form.screenshot ? 'border-emerald-500/50 p-0' : 'border-slate-600 p-6'} text-center cursor-pointer relative overflow-hidden`}>
+                <label className={labelCls}>Chart Screenshot <span className="text-zinc-600 normal-case">(optional)</span></label>
+                <div className={`border-2 border-dashed rounded-xl ${form.screenshot ? 'border-emerald-500/30 p-0' : 'border-zinc-700 p-6 hover:border-zinc-600'} text-center cursor-pointer relative overflow-hidden transition-colors`}>
                   <input 
                     type="file" 
                     accept="image/*" 
@@ -806,18 +818,18 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => 
                   />
                   {form.screenshot ? (
                     <div className="relative">
-                      <img src={form.screenshot} alt="Chart" className="w-full max-h-32 object-cover rounded-lg" />
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); change('screenshot', null); }} 
-                        className="absolute top-2 right-2 bg-slate-900/80 rounded-full p-1 hover:bg-slate-900"
+                      <img src={form.screenshot} alt="Chart" className="w-full max-h-32 object-cover rounded-xl" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); change('screenshot', null); }}
+                        className="absolute top-2 right-2 bg-black/70 rounded-full p-1 hover:bg-black transition-colors"
                       >
                         <Icons.X />
                       </button>
                     </div>
                   ) : (
                     <>
-                      <Icons.Upload />
-                      <div className="text-slate-500 text-sm mt-2">Click or drag to upload</div>
+                      <div className="text-zinc-500"><Icons.Upload /></div>
+                      <div className="text-zinc-500 text-sm mt-2">Click or drag to upload</div>
                     </>
                   )}
                 </div>
@@ -825,7 +837,7 @@ const NewTrade = ({ onSubmit, tickers, prices, settings, trades, warnings }) => 
               <button
                 onClick={submit}
                 disabled={!form.symbol || !form.entry || !form.stopLoss || !form.positionSizeUSD || (hasCriticalWarnings && !acknowledgedWarnings)}
-                className={`w-full py-3 rounded-lg text-white font-semibold ${form.direction === 'long' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
+                className={`w-full py-3 rounded-xl text-white font-semibold transition-all ${form.direction === 'long' ? 'bg-emerald-600/90 hover:bg-emerald-500/90 btn-glow-emerald' : 'bg-red-600/90 hover:bg-red-500/90 btn-glow-red'} disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none`}
               >
                 {hasCriticalWarnings && !acknowledgedWarnings ? 'Acknowledge Warnings First' : `Open ${form.direction === 'long' ? 'Long' : 'Short'}`}
               </button>
@@ -861,15 +873,15 @@ const ActiveTrades = ({ trades, prices, onClose, settings }) => {
   return (
     <div>
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <StatCard label="Open Positions" value={open.length} />
-        <StatCard label="Total Risk" value={`${risk.toFixed(1)}%`} color={risk > settings.maxTotalOpenRisk ? 'text-red-400' : 'text-orange-400'} />
-        <StatCard label="Unrealized P&L" value={formatCurrency(pnl)} color={pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+        <StatCard label="Open Positions" value={open.length} glowColor="blue" />
+        <StatCard label="Total Risk" value={`${risk.toFixed(1)}%`} color={risk > settings.maxTotalOpenRisk ? 'text-red-400' : 'text-orange-400'} glowColor={risk > settings.maxTotalOpenRisk ? 'red' : 'orange'} />
+        <StatCard label="Unrealized P&L" value={formatCurrency(pnl)} color={pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} glowColor={pnl >= 0 ? 'emerald' : 'red'} />
       </div>
       {!open.length ? (
-        <div className="bg-slate-800/50 rounded-xl p-12 text-center border border-slate-700/50">
-          <div className="text-4xl mb-3">📊</div>
-          <div className="text-lg font-medium">No Active Positions</div>
-          <div className="text-slate-500">Open a trade to get started</div>
+        <div className="bg-zinc-900/80 rounded-xl p-12 text-center border border-zinc-800/50">
+          <div className="text-4xl mb-3 opacity-50">📊</div>
+          <div className="text-lg font-medium text-zinc-300">No Active Positions</div>
+          <div className="text-zinc-600">Open a trade to get started</div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -880,33 +892,33 @@ const ActiveTrades = ({ trades, prices, onClose, settings }) => {
             const tpnl = t.direction === 'long' ? pctMove * leveragedPos : -pctMove * leveragedPos;
             const pnlPct = (tpnl / t.positionSizeUSD) * 100;
             return (
-              <div key={t.id} className="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
+              <div key={t.id} className={`bg-zinc-900/80 rounded-xl p-5 border border-zinc-800/50 ${tpnl >= 0 ? 'glow-hover-emerald' : 'glow-hover-red'}`}>
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-mono font-bold">{t.symbol}</span>
-                    <span className={`text-xs px-2 py-1 rounded font-semibold ${t.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{t.direction.toUpperCase()} {t.leverage}x</span>
-                    <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">Risk: {t.riskPercent?.toFixed(1)}%</span>
+                    <span className="text-lg font-mono font-bold text-zinc-100">{t.symbol}</span>
+                    <span className={`text-[11px] px-2 py-1 rounded-md font-semibold ${t.direction === 'long' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{t.direction.toUpperCase()} {t.leverage}x</span>
+                    <span className="text-[11px] px-2 py-1 rounded-md bg-orange-500/10 text-orange-400 border border-orange-500/20">Risk: {t.riskPercent?.toFixed(1)}%</span>
                   </div>
                   <div className="text-right">
-                    <div className={`text-xl font-mono font-bold ${tpnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(tpnl)}</div>
-                    <div className={`text-sm ${tpnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatPercent(pnlPct)}</div>
+                    <div className={`text-xl font-mono font-bold ${tpnl >= 0 ? 'text-emerald-400 stat-emerald' : 'text-red-400 stat-red'}`}>{formatCurrency(tpnl)}</div>
+                    <div className={`text-sm ${tpnl >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>{formatPercent(pnlPct)}</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-5 gap-4 mb-4 text-sm">
-                  {[{ l: 'Entry', v: formatCurrency(t.entry) }, { l: 'Current', v: formatCurrency(p) }, { l: 'Stop Loss', v: formatCurrency(t.stopLoss), c: 'text-red-400' }, { l: 'Take Profit', v: t.takeProfit ? formatCurrency(t.takeProfit) : '—', c: 'text-emerald-400' }, { l: 'Size', v: formatCurrency(t.positionSizeUSD) }].map(x => (
-                    <div key={x.l}><div className="text-xs text-slate-500">{x.l}</div><div className={`font-mono ${x.c || ''}`}>{x.v}</div></div>
+                  {[{ l: 'Entry', v: formatCurrency(t.entry) }, { l: 'Current', v: formatCurrency(p) }, { l: 'Stop Loss', v: formatCurrency(t.stopLoss), c: 'text-red-400/80' }, { l: 'Take Profit', v: t.takeProfit ? formatCurrency(t.takeProfit) : '—', c: 'text-emerald-400/80' }, { l: 'Size', v: formatCurrency(t.positionSizeUSD) }].map(x => (
+                    <div key={x.l}><div className="text-[11px] text-zinc-500 mb-0.5">{x.l}</div><div className={`font-mono text-zinc-200 ${x.c || ''}`}>{x.v}</div></div>
                   ))}
                 </div>
                 {closing === t.id ? (
                   <div className="flex gap-2">
-                    <input type="number" value={exitPrice} onChange={e => setExitPrice(e.target.value)} placeholder="Exit price" className="flex-1 px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white font-mono text-sm" />
-                    <button onClick={() => closeAt(t, parseFloat(exitPrice))} disabled={!exitPrice} className="px-4 py-2 bg-emerald-600 rounded-lg text-white font-semibold text-sm disabled:opacity-50">Confirm</button>
-                    <button onClick={() => { setClosing(null); setExitPrice(''); }} className="px-4 py-2 bg-slate-700/50 rounded-lg text-slate-400 text-sm">Cancel</button>
+                    <input type="number" value={exitPrice} onChange={e => setExitPrice(e.target.value)} placeholder="Exit price" className="flex-1 px-3.5 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl text-zinc-100 font-mono text-sm focus:outline-none" />
+                    <button onClick={() => closeAt(t, parseFloat(exitPrice))} disabled={!exitPrice} className="px-4 py-2.5 bg-emerald-600/90 rounded-xl text-white font-semibold text-sm disabled:opacity-40 btn-glow-emerald">Confirm</button>
+                    <button onClick={() => { setClosing(null); setExitPrice(''); }} className="px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-400 text-sm hover:border-zinc-600 transition-colors">Cancel</button>
                   </div>
                 ) : (
                   <div className="flex gap-2">
-                    <button onClick={() => closeAt(t, p)} className="flex-1 py-2 bg-blue-600 rounded-lg text-white font-semibold text-sm">Close at Market ({formatCurrency(p)})</button>
-                    <button onClick={() => setClosing(t.id)} className="flex-1 py-2 bg-slate-700/50 rounded-lg text-slate-400 text-sm">Custom Price</button>
+                    <button onClick={() => closeAt(t, p)} className="flex-1 py-2.5 bg-blue-600/90 rounded-xl text-white font-semibold text-sm btn-glow-blue hover:bg-blue-500/90 transition-all">Close at Market ({formatCurrency(p)})</button>
+                    <button onClick={() => setClosing(t.id)} className="flex-1 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-400 text-sm hover:border-zinc-600 transition-colors">Custom Price</button>
                   </div>
                 )}
               </div>
@@ -927,31 +939,31 @@ const ClosedTrades = ({ trades }) => {
   return (
     <div>
       <div className="grid grid-cols-4 gap-3 mb-5">
-        <StatCard label="Total P&L" value={formatCurrency(pnl)} color={pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+        <StatCard label="Total P&L" value={formatCurrency(pnl)} color={pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} glowColor={pnl >= 0 ? 'emerald' : 'red'} />
         <StatCard label="Trades" value={closed.length} />
-        <StatCard label="Win Rate" value={`${closed.length ? ((wins/closed.length)*100).toFixed(0) : 0}%`} color={wins/closed.length >= 0.5 ? 'text-emerald-400' : 'text-red-400'} />
+        <StatCard label="Win Rate" value={`${closed.length ? ((wins/closed.length)*100).toFixed(0) : 0}%`} color={wins/closed.length >= 0.5 ? 'text-emerald-400' : 'text-red-400'} glowColor={wins/closed.length >= 0.5 ? 'emerald' : 'red'} />
         <StatCard label="Wins/Losses" value={`${wins} / ${closed.length - wins}`} />
       </div>
       {!closed.length ? (
-        <div className="bg-slate-800/50 rounded-xl p-12 text-center border border-slate-700/50">
-          <div className="text-4xl mb-3">📈</div>
-          <div className="text-lg font-medium">No Closed Trades</div>
+        <div className="bg-zinc-900/80 rounded-xl p-12 text-center border border-zinc-800/50">
+          <div className="text-4xl mb-3 opacity-50">📈</div>
+          <div className="text-lg font-medium text-zinc-300">No Closed Trades</div>
         </div>
       ) : (
-        <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div className="bg-zinc-900/80 rounded-xl border border-zinc-800/50 overflow-hidden">
           <table className="w-full">
-            <thead className="bg-slate-700/30">
-              <tr>{['Symbol', 'Dir', 'Entry', 'Exit', 'P&L', 'Date'].map(h => <th key={h} className="px-4 py-3 text-left text-xs text-slate-500 uppercase font-medium">{h}</th>)}</tr>
+            <thead className="bg-zinc-800/50">
+              <tr>{['Symbol', 'Dir', 'Entry', 'Exit', 'P&L', 'Date'].map(h => <th key={h} className="px-4 py-3 text-left text-[11px] text-zinc-500 uppercase tracking-wider font-medium">{h}</th>)}</tr>
             </thead>
             <tbody>
               {closed.map(t => (
-                <tr key={t.id} onClick={() => setSelected(t.id)} className="border-t border-slate-700/50 hover:bg-slate-700/30 cursor-pointer">
-                  <td className="px-4 py-3 font-mono font-semibold">{t.symbol}</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded ${t.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{t.direction?.toUpperCase()}</span></td>
-                  <td className="px-4 py-3 font-mono text-sm">{formatCurrency(t.entry)}</td>
-                  <td className="px-4 py-3 font-mono text-sm">{formatCurrency(t.exitPrice)}</td>
+                <tr key={t.id} onClick={() => setSelected(t.id)} className="border-t border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors">
+                  <td className="px-4 py-3 font-mono font-semibold text-zinc-200">{t.symbol}</td>
+                  <td className="px-4 py-3"><span className={`text-[11px] px-2 py-0.5 rounded-md ${t.direction === 'long' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{t.direction?.toUpperCase()}</span></td>
+                  <td className="px-4 py-3 font-mono text-sm text-zinc-300">{formatCurrency(t.entry)}</td>
+                  <td className="px-4 py-3 font-mono text-sm text-zinc-300">{formatCurrency(t.exitPrice)}</td>
                   <td className={`px-4 py-3 font-mono font-semibold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(t.pnl)}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500">{new Date(t.exitTime).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-sm text-zinc-500">{new Date(t.exitTime).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -959,8 +971,8 @@ const ClosedTrades = ({ trades }) => {
         </div>
       )}
       {selected && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setSelected(null)}>
-          <div className="bg-slate-800 rounded-xl p-6 w-[400px] max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSelected(null)}>
+          <div className="bg-zinc-900 rounded-2xl p-6 w-[420px] max-h-[80vh] overflow-auto border border-zinc-800" onClick={e => e.stopPropagation()}>
             {(() => {
               const t = closed.find(x => x.id === selected);
               if (!t) return null;
@@ -968,34 +980,34 @@ const ClosedTrades = ({ trades }) => {
                 <>
                   <div className="flex justify-between items-center mb-5">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg font-mono font-bold">{t.symbol}</span>
-                      <span className={`text-xs px-2 py-1 rounded ${t.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{t.direction?.toUpperCase()}</span>
+                      <span className="text-lg font-mono font-bold text-zinc-100">{t.symbol}</span>
+                      <span className={`text-[11px] px-2 py-1 rounded-md ${t.direction === 'long' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{t.direction?.toUpperCase()}</span>
                     </div>
-                    <button onClick={() => setSelected(null)} className="text-slate-500"><Icons.X /></button>
+                    <button onClick={() => setSelected(null)} className="text-zinc-500 hover:text-zinc-300 transition-colors"><Icons.X /></button>
                   </div>
-                  <div className={`text-center p-5 rounded-xl mb-5 ${t.pnl >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
-                    <div className="text-xs text-slate-500 uppercase mb-1">Final P&L</div>
-                    <div className={`text-3xl font-mono font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(t.pnl)}</div>
+                  <div className={`text-center p-5 rounded-xl mb-5 ${t.pnl >= 0 ? 'bg-emerald-950/30 border border-emerald-900/30 glow-emerald' : 'bg-red-950/30 border border-red-900/30 glow-red'}`}>
+                    <div className="text-[11px] text-zinc-500 uppercase tracking-wider mb-1">Final P&L</div>
+                    <div className={`text-3xl font-mono font-bold ${t.pnl >= 0 ? 'text-emerald-400 stat-emerald' : 'text-red-400 stat-red'}`}>{formatCurrency(t.pnl)}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 mb-4">
-                    {[{ l: 'Entry', v: formatCurrency(t.entry) }, { l: 'Exit', v: formatCurrency(t.exitPrice) }, { l: 'Stop Loss', v: formatCurrency(t.stopLoss), c: 'text-red-400' }, { l: 'Size', v: formatCurrency(t.positionSizeUSD || t.positionSize) }].map(x => (
-                      <div key={x.l} className="bg-slate-700/30 rounded-lg p-3">
-                        <div className="text-xs text-slate-500 uppercase mb-1">{x.l}</div>
-                        <div className={`font-mono font-medium ${x.c || ''}`}>{x.v}</div>
+                    {[{ l: 'Entry', v: formatCurrency(t.entry) }, { l: 'Exit', v: formatCurrency(t.exitPrice) }, { l: 'Stop Loss', v: formatCurrency(t.stopLoss), c: 'text-red-400/80' }, { l: 'Size', v: formatCurrency(t.positionSizeUSD || t.positionSize) }].map(x => (
+                      <div key={x.l} className="bg-zinc-800/50 rounded-xl p-3 border border-zinc-800">
+                        <div className="text-[11px] text-zinc-500 uppercase tracking-wider mb-1">{x.l}</div>
+                        <div className={`font-mono font-medium text-zinc-200 ${x.c || ''}`}>{x.v}</div>
                       </div>
                     ))}
                   </div>
                   {t.strategies?.length > 0 && (
                     <div className="mb-4">
-                      <div className="text-xs text-slate-500 uppercase mb-2">Strategies</div>
-                      <div className="flex flex-wrap gap-1">{t.strategies.map(s => {const tag = STRATEGY_TAGS.find(x => x.id === s); return tag && <span key={s} className="text-xs px-2 py-1 rounded" style={{ background: `${tag.color}20`, color: tag.color }}>{tag.label}</span>;})}</div>
+                      <div className="text-[11px] text-zinc-500 uppercase tracking-wider mb-2">Strategies</div>
+                      <div className="flex flex-wrap gap-1.5">{t.strategies.map(s => {const tag = STRATEGY_TAGS.find(x => x.id === s); return tag && <span key={s} className="text-xs px-2 py-1 rounded-md border" style={{ background: `${tag.color}15`, color: tag.color, borderColor: `${tag.color}30` }}>{tag.label}</span>;})}</div>
                     </div>
                   )}
-                  {t.notes && <div className="mb-4"><div className="text-xs text-slate-500 uppercase mb-2">Notes</div><div className="bg-slate-700/30 rounded-lg p-3 text-sm">{t.notes}</div></div>}
+                  {t.notes && <div className="mb-4"><div className="text-[11px] text-zinc-500 uppercase tracking-wider mb-2">Notes</div><div className="bg-zinc-800/50 rounded-xl p-3.5 text-sm text-zinc-300 border border-zinc-800">{t.notes}</div></div>}
                   {t.screenshot && (
                     <div>
-                      <div className="text-xs text-slate-500 uppercase mb-2">Chart Screenshot</div>
-                      <img src={t.screenshot} alt="Trade chart" className="w-full rounded-lg border border-slate-700" />
+                      <div className="text-[11px] text-zinc-500 uppercase tracking-wider mb-2">Chart Screenshot</div>
+                      <img src={t.screenshot} alt="Trade chart" className="w-full rounded-xl border border-zinc-800" />
                     </div>
                   )}
                 </>
@@ -1013,20 +1025,20 @@ const SettingsPage = ({ settings, onUpdate, trades }) => {
   const pnl = trades.filter(t => t.status === 'closed').reduce((s, t) => s + (t.pnl || 0), 0);
   const save = (f, v) => { const n = { ...local, [f]: parseFloat(v) || 0 }; setLocal(n); onUpdate(n); };
   const saveToggle = (f, v) => { const n = { ...local, [f]: v }; setLocal(n); onUpdate(n); };
-  const inputCls = "w-full px-3 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-blue-500";
+  const inputCls = "w-full px-3.5 py-2.5 bg-zinc-900/80 border border-zinc-800 rounded-xl text-zinc-100 font-mono text-sm focus:outline-none focus:border-zinc-600";
 
   const ToggleSwitch = ({ checked, onChange, label, description, stat }) => (
-    <div className="flex items-start gap-3 p-3 bg-slate-700/20 rounded-lg mb-2">
+    <div className="flex items-start gap-3 p-3.5 bg-zinc-800/30 rounded-xl mb-2 border border-zinc-800/50">
       <button
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${checked ? 'bg-emerald-600' : 'bg-slate-600'}`}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 ease-in-out focus:outline-none ${checked ? 'bg-emerald-600/80' : 'bg-zinc-700'}`}
       >
         <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
       </button>
       <div className="flex-1">
-        <div className="text-sm font-medium text-white">{label}</div>
-        <div className="text-xs text-slate-500 mt-0.5">{description}</div>
-        {stat && <div className="text-xs text-slate-600 mt-1 font-mono">{stat}</div>}
+        <div className="text-sm font-medium text-zinc-200">{label}</div>
+        <div className="text-xs text-zinc-500 mt-0.5">{description}</div>
+        {stat && <div className="text-[11px] text-zinc-600 mt-1.5 font-mono">{stat}</div>}
       </div>
     </div>
   );
@@ -1035,36 +1047,36 @@ const SettingsPage = ({ settings, onUpdate, trades }) => {
     <div className="grid grid-cols-2 gap-5">
       <div className="space-y-5">
         {/* Account Settings */}
-        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-          <h3 className="text-base font-semibold mb-5">💰 Account</h3>
+        <div className="bg-zinc-900/80 rounded-xl p-6 border border-zinc-800/50">
+          <h3 className="text-base font-medium text-zinc-200 mb-5">Account</h3>
           <div className="mb-5">
-            <label className="block text-xs text-slate-500 uppercase mb-1.5">Base Balance</label>
+            <label className="block text-[11px] text-zinc-500 uppercase tracking-wider mb-1.5">Base Balance</label>
             <input type="number" value={local.accountBalance} onChange={e => save('accountBalance', e.target.value)} className={inputCls} />
           </div>
-          <div className="bg-slate-700/30 rounded-lg p-4">
-            <div className="flex justify-between mb-2 text-sm"><span className="text-slate-500">Base</span><span className="font-mono">{formatCurrency(local.accountBalance)}</span></div>
-            <div className="flex justify-between mb-2 text-sm"><span className="text-slate-500">Realized P&L</span><span className={`font-mono ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(pnl)}</span></div>
-            <div className="border-t border-slate-600 pt-2 mt-2 flex justify-between"><span className="font-medium">Current</span><span className="font-mono font-semibold">{formatCurrency(local.accountBalance + pnl)}</span></div>
+          <div className="bg-zinc-800/40 rounded-xl p-4 border border-zinc-800/50">
+            <div className="flex justify-between mb-2 text-sm"><span className="text-zinc-500">Base</span><span className="font-mono text-zinc-200">{formatCurrency(local.accountBalance)}</span></div>
+            <div className="flex justify-between mb-2 text-sm"><span className="text-zinc-500">Realized P&L</span><span className={`font-mono ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(pnl)}</span></div>
+            <div className="border-t border-zinc-700/50 pt-2 mt-2 flex justify-between"><span className="font-medium text-zinc-300">Current</span><span className="font-mono font-semibold text-zinc-100">{formatCurrency(local.accountBalance + pnl)}</span></div>
           </div>
         </div>
 
         {/* Risk Settings */}
-        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-          <h3 className="text-base font-semibold mb-5">⚠️ Risk Settings</h3>
+        <div className="bg-zinc-900/80 rounded-xl p-6 border border-zinc-800/50">
+          <h3 className="text-base font-medium text-zinc-200 mb-5">Risk Settings</h3>
           {[{ f: 'maxRiskPerTrade', l: 'Max Risk/Trade (%)', d: 'Warning when single trade exceeds' },{ f: 'maxTotalOpenRisk', l: 'Max Total Risk (%)', d: 'Warning when all positions exceed' },{ f: 'consecutiveLossesAlert', l: 'Loss Streak Alert', d: 'Tilt warning after X consecutive losses' }].map(x => (
             <div key={x.f} className="mb-4">
-              <label className="block text-xs text-slate-500 uppercase mb-1.5">{x.l}</label>
+              <label className="block text-[11px] text-zinc-500 uppercase tracking-wider mb-1.5">{x.l}</label>
               <input type="number" value={local[x.f]} onChange={e => save(x.f, e.target.value)} className={inputCls} />
-              <div className="text-xs text-slate-600 mt-1">{x.d}</div>
+              <div className="text-xs text-zinc-600 mt-1.5">{x.d}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Tilt Detection Settings */}
-      <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-        <h3 className="text-base font-semibold mb-2">🧠 Tilt Detection</h3>
-        <p className="text-xs text-slate-500 mb-5">Data-driven warnings based on your trading patterns</p>
+      <div className="bg-zinc-900/80 rounded-xl p-6 border border-zinc-800/50">
+        <h3 className="text-base font-medium text-zinc-200 mb-1">Tilt Detection</h3>
+        <p className="text-xs text-zinc-500 mb-5">Data-driven warnings based on your trading patterns</p>
 
         <div className="space-y-1">
           <ToggleSwitch
@@ -1109,14 +1121,14 @@ const SettingsPage = ({ settings, onUpdate, trades }) => {
         </div>
 
         {/* Info Box */}
-        <div className="mt-5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-          <div className="text-xs font-medium text-blue-400 mb-2">📊 Your Trading Data Shows:</div>
-          <ul className="text-xs text-slate-400 space-y-1">
-            <li>• Best days: Friday (+$17/trade), Wednesday (+$5/trade)</li>
-            <li>• Best hours: 15:00 (+$55/trade), 02:00 (+$46/trade)</li>
-            <li>• After a win: +$11 avg, 50% WR</li>
-            <li>• After a loss: -$21 avg, 27% WR</li>
-            <li>• Wait 2+ hours after loss for 33% WR (vs 11-19% if &lt;30min)</li>
+        <div className="mt-5 p-4 bg-blue-950/30 border border-blue-900/20 rounded-xl warning-info">
+          <div className="text-xs font-medium text-blue-400/90 mb-2">Your Trading Data Shows:</div>
+          <ul className="text-xs text-zinc-400 space-y-1.5">
+            <li className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-emerald-500"/>Best days: Friday (+$17), Wednesday (+$5)</li>
+            <li className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-emerald-500"/>Best hours: 15:00 (+$55), 02:00 (+$46)</li>
+            <li className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-emerald-500"/>After a win: +$11 avg, 50% WR</li>
+            <li className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-red-500"/>After a loss: -$21 avg, 27% WR</li>
+            <li className="flex items-center gap-2"><span className="w-1 h-1 rounded-full bg-orange-500"/>Wait 2+ hrs after loss for 33% WR</li>
           </ul>
         </div>
       </div>
@@ -1161,17 +1173,17 @@ export default function App() {
   const titles = { dashboard: 'Dashboard', new: 'New Trade', active: 'Active Trades', closed: 'Trade History', settings: 'Settings' };
 
   return (
-    <div className="flex min-h-screen bg-slate-900 text-white">
-      <aside className="w-52 bg-slate-800/50 border-r border-slate-700/50 p-4 fixed h-full">
-        <div className="flex items-center gap-2 mb-8 px-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-blue-500 flex items-center justify-center font-mono font-bold text-xs">CJ</div>
-          <div><div className="text-sm font-semibold">Trading Journal</div><div className="text-[10px] text-slate-500">Hyperliquid</div></div>
+    <div className="flex min-h-screen bg-[#0a0a0b] text-zinc-100">
+      <aside className="w-52 bg-zinc-900/50 border-r border-zinc-800/50 p-4 fixed h-full">
+        <div className="flex items-center gap-2.5 mb-8 px-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/80 to-blue-500/80 flex items-center justify-center font-mono font-bold text-xs shadow-lg shadow-emerald-500/10">CJ</div>
+          <div><div className="text-sm font-medium text-zinc-200">Trading Journal</div><div className="text-[10px] text-zinc-600">Hyperliquid</div></div>
         </div>
         <nav className="space-y-1">
           {nav.map(n => {
             const Icon = n.icon;
             return (
-              <button key={n.id} onClick={() => setScreen(n.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm ${screen === n.id ? 'bg-slate-700/50 text-white font-medium' : 'text-slate-400 hover:bg-slate-700/30'}`}>
+              <button key={n.id} onClick={() => setScreen(n.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${screen === n.id ? 'bg-zinc-800/70 text-zinc-100 font-medium border border-zinc-700/50' : 'text-zinc-500 hover:bg-zinc-800/30 hover:text-zinc-300 border border-transparent'}`}>
                 <Icon />{n.label}
               </button>
             );
@@ -1180,16 +1192,16 @@ export default function App() {
       </aside>
       <main className="flex-1 ml-52 p-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-xl font-semibold">{titles[screen]}</h1>
-          <div className="flex items-center gap-3">
-            <button onClick={refreshPrices} className="flex items-center gap-1.5 text-xs hover:text-white transition-colors" title="Refresh prices">
+          <h1 className="text-xl font-medium text-zinc-100">{titles[screen]}</h1>
+          <div className="flex items-center gap-4">
+            <button onClick={refreshPrices} className="flex items-center gap-1.5 text-xs hover:text-zinc-200 transition-colors" title="Refresh prices">
               {isLive ? (
-                <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>Live</span>
+                <span className="flex items-center gap-1.5 text-emerald-400/80"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-soft-pulse"/>Live</span>
               ) : (
-                <span className="flex items-center gap-1.5 text-orange-400"><Icons.Refresh /> Static</span>
+                <span className="flex items-center gap-1.5 text-orange-400/80"><Icons.Refresh /> Static</span>
               )}
             </button>
-            <span className="text-xs text-slate-500">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+            <span className="text-xs text-zinc-600">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
           </div>
         </div>
         {screen === 'dashboard' && <Dashboard trades={state.trades} settings={state.settings} prices={prices} warnings={warnings} />}
